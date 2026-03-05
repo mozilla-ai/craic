@@ -6,6 +6,7 @@
 
 ---
 
+**Mozilla.ai**
 Draft — March 2026
 Author: Peter Wilson
 Status: Exploratory / Pre-proposal
@@ -124,7 +125,7 @@ The public, community-governed knowledge commons. Only knowledge that has been e
 
 **The commercial opportunity:**
 
-The global commons is free and open — this is non-negotiable and core to the project's mission. But the Tier 1 and Tier 2 infrastructure represents a clear enterprise and SaaS opportunity:
+The global commons is free and open — this is non-negotiable and core to the Mozilla mission. But the Tier 1 and Tier 2 infrastructure represents a clear enterprise and SaaS opportunity:
 
 - **Hosted team stores** with organisation-level tenancy, access controls, and sub-team scoping.
 - **Managed graduation pipelines** with configurable HITL workflows, compliance integrations, and audit dashboards.
@@ -132,7 +133,7 @@ The global commons is free and open — this is non-negotiable and core to the p
 - **Enterprise guardrails configuration** — custom rulesets layered on top of the baseline via any-guardrail.
 - **Priority support and SLAs** for organisations that depend on the commons for critical agent operations.
 
-This follows the proven open-core model: the protocol, the knowledge format, the global commons, and the reference implementations are all OSS. The enterprise value-add — hosting, management, analytics, compliance tooling — is where commercial products can be built, by a steward organisation or by third parties. This is the same model that sustains projects like GitLab, Elastic, and Red Hat.
+This follows the proven open-core model: the protocol, the knowledge format, the global commons, and the reference implementations are all OSS. The enterprise value-add — hosting, management, analytics, compliance tooling — is where commercial products can be built, by Mozilla.ai or by third parties. This is the same model that sustains projects like GitLab, Elastic, and Red Hat.
 
 ### 3.7 How It Manifests: Agent Integration in Practice
 
@@ -157,7 +158,7 @@ CRAIC ships as three things, layered for different adoption paths:
 This is the one-command install. For Claude Code:
 
 ```
-/plugin install craic@craic-plugins
+/plugin install craic@mozilla-ai-plugins
 ```
 
 For OpenCode, the equivalent plugin install. The plugin bundles everything:
@@ -195,7 +196,7 @@ This matters for two reasons. First, it catches the long-tail knowledge that rea
 For agents that support skills but not the full plugin format — or for developers who want a lighter-weight integration:
 
 ```
-npx skills add craic-project/craic --skill craic
+npx skills add mozilla-ai/craic --skill craic
 ```
 
 This installs just the CRAIC `SKILL.md` and the MCP server configuration. It works across Claude Code, Codex, Cursor, OpenCode, Gemini CLI, GitHub Copilot, and any other agent that supports the open Agent Skills standard. The skill teaches the agent to query the commons before executing unfamiliar API calls, propose learnings when it discovers novel patterns, and flag graduation candidates for human review.
@@ -226,7 +227,7 @@ Every piece of shared knowledge flows through a common structured format. This i
 
 ```json
 {
-  "$schema": "https://craic-project.org/schemas/knowledge-unit/v1.json",
+  "$schema": "https://craic.mozilla.ai/schemas/knowledge-unit/v1.json",
   "id": "ku_a1b2c3d4e5f6",
   "version": "1.0.0",
   "domain": ["api", "payments", "error-handling"],
@@ -261,7 +262,7 @@ Every piece of shared knowledge flows through a common structured format. This i
       {
         "from": "team",
         "to": "global",
-        "approved_by": "human:reviewer_7f2a@craic-project.org",
+        "approved_by": "human:reviewer_7f2a@craic.mozilla.ai",
         "timestamp": "2025-02-01T16:45:00Z"
       }
     ]
@@ -301,7 +302,7 @@ The specification should define the API contract (how agents read and write know
 
 **What an integration looks like end-to-end:**
 
-1. Developer installs the CRAIC plugin (`/plugin install craic@craic-plugins`) or skill (`npx skills add craic-project/craic`).
+1. Developer installs the CRAIC plugin (`/plugin install craic@mozilla-ai-plugins`) or skill (`npx skills add mozilla-ai/craic`).
 2. Developer runs their agent and asks it to integrate Stripe payments.
 3. The CRAIC Skill recognises "API integration" as a trigger context.
 4. The agent calls `craic_query` via the MCP server with domain tags `["api", "payments", "stripe"]` and the current language context.
@@ -366,69 +367,81 @@ Several adjacent efforts exist, but none deliver the full vision described above
 
 ---
 
-## 6. Regulatory Alignment: EU AI Act
+## 6. Why Mozilla.ai
+
+Mozilla has a unique position and credibility to lead this effort, for several reasons:
+
+- **Mission alignment:** Trustworthy AI and open-source are Mozilla's DNA. This project is a natural extension of the same philosophy that gave the world Firefox and MDN.
+- **Existing capabilities:** any-guardrail provides the safety layer. Mozilla's standards and policy expertise enables the governance work. The brand opens doors for partnerships.
+- **Neutrality:** Mozilla is not an LLM provider, not a cloud vendor, not a blockchain company. A model-agnostic, platform-agnostic standard needs a neutral steward.
+- **Track record:** Just as nobody was pushing for open, trustworthy, standards-based browsers until Mozilla showed up, nobody is pushing for an open agent intelligence commons. This is the same playbook.
+- **Network:** Mozilla can convene the right partners — from the Cardano Foundation to academic researchers to enterprise AI teams — in a way that a startup or a single vendor cannot.
+
+---
+
+## 7. Regulatory Alignment: EU AI Act
 
 The EU AI Act becomes fully enforceable for high-risk AI systems on 2 August 2026. Its requirements around transparency, human oversight, data governance, and risk management are not optional — they carry significant penalties for non-compliance. CRAIC's architecture was not designed to satisfy regulation, but it turns out to align naturally with several core requirements. This is a significant selling point for enterprise adoption: organisations that use CRAIC are building compliance into their agent infrastructure rather than retrofitting it later.
 
-### 6.1 Human Oversight (Article 14)
+### 7.1 Human Oversight (Article 14)
 
 The EU AI Act requires that high-risk AI systems be designed to allow effective human oversight, including the ability to understand the system's capabilities and limitations and to intervene or interrupt as necessary. CRAIC's HITL graduation pipeline directly satisfies this: humans review and approve knowledge before it moves from local to team scope, and from team to global scope. Agents propose, humans decide. This is not a bolted-on compliance checkbox — it is a core architectural feature that simultaneously improves knowledge quality and satisfies regulatory requirements.
 
-### 6.2 Transparency and Record-Keeping (Articles 11, 12, 13)
+### 7.2 Transparency and Record-Keeping (Articles 11, 12, 13)
 
 The Act requires detailed technical documentation, automatic logging of relevant events, and transparency to downstream deployers. CRAIC's knowledge format includes provenance tracking (contributing agent DID, timestamps, confirmation history), versioning, and structured metadata. Every learning unit in the commons has a verifiable chain of attribution — who contributed it, who confirmed it, when it was last validated. This creates an audit trail that is native to the system rather than a separate compliance layer.
 
-### 6.3 Risk Management (Article 9)
+### 7.3 Risk Management (Article 9)
 
 Providers must establish a documented risk management system that identifies, analyses, and mitigates risks throughout the AI system's lifecycle. CRAIC's anti-poisoning safeguards (anomaly detection, diversity requirements, reputation scoring) and its integration with guardrails tooling (such as any-guardrail) constitute a risk management layer for shared knowledge. The layered architecture itself is a risk mitigation: sensitive knowledge stays in the local/team layer, and only validated, generic insights reach the global commons.
 
-### 6.4 Data Governance (Article 10)
+### 7.4 Data Governance (Article 10)
 
 The Act requires that training, validation, and testing datasets be relevant, representative, and free of errors to the best extent possible. While CRAIC is not a training dataset in the traditional sense, the same principles apply to a knowledge commons. The HITL review process, multi-factor reputation scoring, and staleness detection mechanisms are all data governance controls applied to shared agent knowledge. The privacy layer (Midnight/ZK proofs) ensures that no PII or company-specific data enters the commons, addressing data protection obligations.
 
-### 6.5 Accuracy and Robustness (Article 15)
+### 7.5 Accuracy and Robustness (Article 15)
 
 High-risk AI systems must achieve appropriate levels of accuracy and robustness. CRAIC's confirmation mechanism — where knowledge gains confidence as independent agents verify it — is a built-in accuracy measure. Stale or incorrect knowledge decays in confidence over time and can be flagged or deprecated. This means agents drawing on the commons are consuming knowledge with quantifiable confidence levels, not unvetted assertions.
 
-### 6.6 The Compliance Narrative for Enterprises
+### 7.6 The Compliance Narrative for Enterprises
 
 For organisations evaluating CRAIC, the regulatory message is straightforward: adopting CRAIC does not just make your agents smarter and more efficient — it gives you auditable provenance on the knowledge your agents use, human oversight checkpoints at every scope boundary, built-in risk management through trust and reputation mechanisms, and data governance by design with privacy-preserving sharing. In a regulatory environment where "no documentation equals failed audit," a system that generates documentation and audit trails as a byproduct of normal operation is a significant advantage.
 
 ---
 
-## 7. Proposed Approach
+## 8. Proposed Approach
 
-### 7.1 Phase 1: Specification and Community
+### 8.1 Phase 1: Specification and Community
 
 - Define the open knowledge format specification (what a "learning unit" looks like, metadata schema, versioning).
 - Publish a position paper / RFC for community input.
 - Establish relationships with key partners: Cardano Foundation (Veridian / Midnight), Memco (Spark team), Soltoggio group at Loughborough (academic foundations), Collective Intelligence Project (governance frameworks).
 - Scope the integration with any-guardrail for knowledge quality and safety filtering.
 
-### 7.2 Phase 2: Reference Implementation
+### 8.2 Phase 2: Reference Implementation
 
 - Build a reference OSS implementation of the local and team-level knowledge stores.
 - Implement the HITL graduation pipeline (local → team → global nomination).
 - Integrate Veridian/KERI for agent identity in the reference implementation.
 - Prototype the global commons with a curated domain (e.g. coding / software development, leveraging existing Spark research as a starting point).
 
-### 7.3 Phase 3: Trust and Scale
+### 8.3 Phase 3: Trust and Scale
 
 - Integrate Midnight for privacy-preserving knowledge sharing where needed.
 - Develop and deploy the multi-factor reputation system (peer confirmation, diversity weighting, anomaly detection).
 - Expand beyond coding to additional domains.
 - Begin standards track process (potentially through W3C, or a new working group).
 
-### 7.4 Phase 4: Ecosystem
+### 8.4 Phase 4: Ecosystem
 
 - Encourage third-party implementations of the standard.
 - Explore commercial services built on the OSS core (hosted team stores, enterprise support, analytics).
 - Measure and publish environmental impact data (tokens saved, compute avoided).
-- Lobby for adoption alongside broader AI policy efforts.
+- Lobby for adoption alongside Mozilla's broader AI policy work.
 
 ---
 
-## 8. Open Questions and Risks
+## 9. Open Questions and Risks
 
 - **Incentive design:** Why would commercial agent operators contribute to a commons that helps competitors? There are strong counter-arguments: the open-source ecosystem already demonstrates this dynamic at scale — everyone builds on Linux, contributes to shared libraries, and competes on implementation rather than foundations. Better general-purpose agents benefit the entire market, and proponents of free-market competition should welcome giving everyone access to the best tools so the best product wins on merit. Furthermore, the environmental argument provides a non-commercial incentive that resonates with policy-makers and the public. That said, the dynamics of sharing real-time operational knowledge may differ from sharing code, and some organisations may resist contributing knowledge they view as a competitive edge. The layered architecture mitigates this somewhat — companies keep their proprietary context in the local/team layer and only graduate genuinely generic insights to the global commons.
 - **Quality at scale:** HITL review works for early stages, but can it scale to millions of contributions? We likely need tiered automation with human oversight at the graduation boundaries.
@@ -439,7 +452,7 @@ For organisations evaluating CRAIC, the regulatory message is straightforward: a
 
 ---
 
-## 9. Potential Partners and Contacts
+## 10. Potential Partners and Contacts
 
 | Organisation | Relevance | Contact Route |
 |-------------|-----------|---------------|
@@ -451,16 +464,16 @@ For organisations evaluating CRAIC, the regulatory message is straightforward: a
 
 ---
 
-## 10. Recommended Next Steps
+## 11. Recommended Next Steps
 
 1. **Technical spike:** Small team (2–3 engineers, 2–4 weeks) to prototype the knowledge format spec and a minimal local knowledge store integrated with one agent framework.
 2. **Partner outreach:** Initial conversations with Cardano Foundation (Veridian team) and Memco to understand synergies and potential collaboration.
-3. **Position paper:** Draft a public-facing blog post or white paper articulating the vision, inviting community input, and establishing stewardship for the effort.
+3. **Position paper:** Draft a public-facing blog post or white paper articulating the vision, inviting community input, and positioning Mozilla.ai as the steward of this effort.
 4. **Proposal to Cardano Accelerator:** Evaluate whether the Spring 2026 Cardano Accelerator Program is a fit for bootstrapping the trust/identity integration.
 
 ---
 
-## 11. References and Further Reading
+## 12. References and Further Reading
 
 ### Academic Papers
 
@@ -553,4 +566,4 @@ For organisations evaluating CRAIC, the regulatory message is straightforward: a
 
 ---
 
-*This document is a starting point for discussion, not a finished proposal. The goal is to determine whether to invest in scoping this further. All architectural decisions, timelines, and partnerships are exploratory and subject to change based on internal alignment and external feedback.*
+*This document is a starting point for discussion, not a finished proposal. The goal is to determine whether Mozilla.ai should invest in scoping this further. All architectural decisions, timelines, and partnerships are exploratory and subject to change based on internal alignment and external feedback.*
