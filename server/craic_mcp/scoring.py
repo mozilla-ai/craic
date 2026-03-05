@@ -1,9 +1,8 @@
-# Confidence scoring and relevance functions for knowledge units.
+"""Confidence scoring and relevance functions for knowledge units."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from .knowledge_unit import Flag, FlagReason, KnowledgeUnit
-
 
 CONFIRMATION_BOOST = 0.1
 FLAG_PENALTY = 0.15
@@ -13,9 +12,7 @@ CONFIDENCE_FLOOR = 0.0
 
 def apply_confirmation(unit: KnowledgeUnit) -> KnowledgeUnit:
     """Increment confirmations and boost confidence, capped at 1.0."""
-    new_confidence = min(
-        unit.evidence.confidence + CONFIRMATION_BOOST, CONFIDENCE_CEILING
-    )
+    new_confidence = min(unit.evidence.confidence + CONFIRMATION_BOOST, CONFIDENCE_CEILING)
     new_confirmations = unit.evidence.confirmations + 1
     return unit.model_copy(
         update={
@@ -23,7 +20,7 @@ def apply_confirmation(unit: KnowledgeUnit) -> KnowledgeUnit:
                 update={
                     "confidence": new_confidence,
                     "confirmations": new_confirmations,
-                    "last_confirmed": datetime.now(timezone.utc),
+                    "last_confirmed": datetime.now(UTC),
                 }
             )
         }
@@ -32,15 +29,11 @@ def apply_confirmation(unit: KnowledgeUnit) -> KnowledgeUnit:
 
 def apply_flag(unit: KnowledgeUnit, reason: FlagReason) -> KnowledgeUnit:
     """Reduce confidence and record the flag reason."""
-    new_confidence = max(
-        unit.evidence.confidence - FLAG_PENALTY, CONFIDENCE_FLOOR
-    )
+    new_confidence = max(unit.evidence.confidence - FLAG_PENALTY, CONFIDENCE_FLOOR)
     new_flag = Flag(reason=reason)
     return unit.model_copy(
         update={
-            "evidence": unit.evidence.model_copy(
-                update={"confidence": round(new_confidence, 2)}
-            ),
+            "evidence": unit.evidence.model_copy(update={"confidence": new_confidence}),
             "flags": [*unit.flags, new_flag],
         }
     )
@@ -65,9 +58,7 @@ def calculate_relevance(
     unit_domains = set(unit.domain)
     query_domain_set = set(query_domains)
     if unit_domains or query_domain_set:
-        domain_score = len(unit_domains & query_domain_set) / len(
-            unit_domains | query_domain_set
-        )
+        domain_score = len(unit_domains & query_domain_set) / len(unit_domains | query_domain_set)
     else:
         domain_score = 0.0
 
@@ -81,8 +72,4 @@ def calculate_relevance(
     if query_framework and query_framework in unit.context.frameworks:
         framework_score = 1.0
 
-    return (
-        domain_weight * domain_score
-        + language_weight * language_score
-        + framework_weight * framework_score
-    )
+    return domain_weight * domain_score + language_weight * language_score + framework_weight * framework_score

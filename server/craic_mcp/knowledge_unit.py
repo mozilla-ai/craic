@@ -1,24 +1,27 @@
-# Pydantic model for CRAIC knowledge units.
+"""Pydantic models for CRAIC knowledge units."""
 
-from datetime import datetime, timezone
-from enum import Enum
+from datetime import UTC, datetime
+from enum import StrEnum
 
 from nanoid import generate
 from pydantic import BaseModel, Field, model_validator
-
 
 KU_ID_PREFIX = "ku_"
 KU_ID_ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 KU_ID_LENGTH = 21
 
 
-class Tier(str, Enum):
+class Tier(StrEnum):
+    """Knowledge unit storage tier."""
+
     LOCAL = "local"
     TEAM = "team"
     GLOBAL = "global"
 
 
-class FlagReason(str, Enum):
+class FlagReason(StrEnum):
+    """Reason for flagging a knowledge unit."""
+
     STALE = "stale"
     INCORRECT = "incorrect"
     DUPLICATE = "duplicate"
@@ -28,16 +31,20 @@ class Flag(BaseModel):
     """A recorded flag against a knowledge unit."""
 
     reason: FlagReason
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class Insight(BaseModel):
+    """Tripartite insight: summary, detail, and recommended action."""
+
     summary: str
     detail: str
     action: str
 
 
 class Context(BaseModel):
+    """Language, framework, and pattern context for a knowledge unit."""
+
     languages: list[str] = Field(default_factory=list)
     frameworks: list[str] = Field(default_factory=list)
     pattern: str = ""
@@ -54,15 +61,24 @@ class Evidence(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def set_default_timestamps(cls, data: dict) -> dict:
-        """Ensure both timestamps are identical on creation."""
+        """Ensure timestamp consistency on creation."""
         if isinstance(data, dict):
-            now = datetime.now(timezone.utc)
-            data.setdefault("first_observed", now)
-            data.setdefault("last_confirmed", now)
+            first = data.get("first_observed")
+            last = data.get("last_confirmed")
+            if first is None and last is None:
+                now = datetime.now(UTC)
+                data["first_observed"] = now
+                data["last_confirmed"] = now
+            elif first is None:
+                data["first_observed"] = last
+            elif last is None:
+                data["last_confirmed"] = first
         return data
 
 
 class KnowledgeUnit(BaseModel):
+    """A single unit of shared agent knowledge."""
+
     id: str
     version: int = 1
     domain: list[str] = Field(min_length=1)

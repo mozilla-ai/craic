@@ -1,9 +1,8 @@
 # Tests for knowledge unit data model and confidence scoring.
 
+from datetime import UTC
+
 import pytest
-
-from pydantic import ValidationError
-
 from craic_mcp.knowledge_unit import (
     Context,
     Evidence,
@@ -14,6 +13,7 @@ from craic_mcp.knowledge_unit import (
     create_knowledge_unit,
 )
 from craic_mcp.scoring import apply_confirmation, apply_flag, calculate_relevance
+from pydantic import ValidationError
 
 
 def _make_insight() -> Insight:
@@ -120,27 +120,15 @@ class TestCalculateRelevance:
         assert score == 0.0
 
     def test_language_match_adds_secondary_signal(self):
-        unit = _make_unit(
-            context=Context(languages=["python"], frameworks=[])
-        )
-        score_with_lang = calculate_relevance(
-            unit, ["databases"], query_language="python"
-        )
-        score_without_lang = calculate_relevance(
-            unit, ["databases"], query_language=None
-        )
+        unit = _make_unit(context=Context(languages=["python"], frameworks=[]))
+        score_with_lang = calculate_relevance(unit, ["databases"], query_language="python")
+        score_without_lang = calculate_relevance(unit, ["databases"], query_language=None)
         assert score_with_lang > score_without_lang
 
     def test_framework_match_adds_secondary_signal(self):
-        unit = _make_unit(
-            context=Context(languages=[], frameworks=["django"])
-        )
-        score_with_fw = calculate_relevance(
-            unit, ["databases"], query_framework="django"
-        )
-        score_without_fw = calculate_relevance(
-            unit, ["databases"], query_framework=None
-        )
+        unit = _make_unit(context=Context(languages=[], frameworks=["django"]))
+        score_with_fw = calculate_relevance(unit, ["databases"], query_framework="django")
+        score_without_fw = calculate_relevance(unit, ["databases"], query_framework=None)
         assert score_with_fw > score_without_fw
 
     def test_full_match_returns_one(self):
@@ -202,12 +190,26 @@ class TestEvidenceTimestamps:
         assert evidence.first_observed == evidence.last_confirmed
 
     def test_explicit_timestamps_are_preserved(self):
-        from datetime import datetime, timezone
+        from datetime import datetime
 
-        ts = datetime(2025, 1, 1, tzinfo=timezone.utc)
+        ts = datetime(2025, 1, 1, tzinfo=UTC)
         evidence = Evidence(first_observed=ts, last_confirmed=ts)
         assert evidence.first_observed == ts
         assert evidence.last_confirmed == ts
+
+    def test_only_first_observed_copies_to_last_confirmed(self):
+        from datetime import datetime
+
+        ts = datetime(2025, 6, 15, tzinfo=UTC)
+        evidence = Evidence(first_observed=ts)
+        assert evidence.last_confirmed == ts
+
+    def test_only_last_confirmed_copies_to_first_observed(self):
+        from datetime import datetime
+
+        ts = datetime(2025, 6, 15, tzinfo=UTC)
+        evidence = Evidence(last_confirmed=ts)
+        assert evidence.first_observed == ts
 
 
 class TestConfidenceBounds:
