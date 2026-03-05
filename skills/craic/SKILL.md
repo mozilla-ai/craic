@@ -37,7 +37,7 @@ Do not query CRAIC for:
 
 ### Formulating Domain Tags
 
-Choose domain tags that capture the technology, layer, and integration point. Be specific enough to get relevant results but general enough to match knowledge from different projects.
+Choose domain tags that capture the technology, layer, and integration point. Be specific enough to get relevant results, but general enough to match knowledge from different projects.
 
 The query interface accepts singular `language`/`framework` for convenience. The knowledge unit schema uses plural `languages`/`frameworks` to support multiple values.
 
@@ -66,9 +66,9 @@ Propose a new knowledge unit when you discover something that would save another
 
 - You discover undocumented API behaviour (e.g. an endpoint returns an unexpected status code or response shape).
 - You find a non-obvious workaround for a known issue.
-- You identify configuration that only works under specific conditions (e.g. a flag that behaves differently across versions).
-- You resolve an error after multiple failed attempts and the solution was not obvious from documentation.
-- You discover version-specific incompatibilities between libraries or tools.
+- Configuration only works under specific conditions (e.g. a flag that behaves differently across versions).
+- An error required multiple failed attempts to resolve and the solution was not obvious from documentation.
+- Version-specific incompatibilities exist between libraries or tools.
 
 ### Writing Good Proposals
 
@@ -113,7 +113,7 @@ When encountering an error, follow this sequence:
 
 1. Call `craic_query` with domain tags derived from the error context (e.g. the library, tool, or API involved) **before** attempting any fix.
 2. If a relevant knowledge unit exists, apply its guidance and confirm it if it resolves the issue.
-3. If no relevant knowledge exists and you resolve the error through other means, call `craic_propose` with the solution so future agents benefit.
+3. If no relevant knowledge exists, and you resolve the error through other means, call `craic_propose` with the solution so future agents benefit.
 
 Do not retry blindly. Always check the commons first.
 
