@@ -109,9 +109,12 @@ class LocalStore:
 
         Raises:
             sqlite3.IntegrityError: If a unit with the same ID already exists.
+            ValueError: If domain normalisation results in no valid domains.
         """
         self._check_open()
         domains = _normalise_domains(unit.domain)
+        if not domains:
+            raise ValueError("At least one non-empty domain is required")
         unit = unit.model_copy(update={"domain": domains})
         data = unit.model_dump_json()
         with self._conn:
@@ -150,9 +153,12 @@ class LocalStore:
 
         Raises:
             KeyError: If no unit with the given ID exists.
+            ValueError: If domain normalisation results in no valid domains.
         """
         self._check_open()
         domains = _normalise_domains(unit.domain)
+        if not domains:
+            raise ValueError("At least one non-empty domain is required")
         unit = unit.model_copy(update={"domain": domains})
         data = unit.model_dump_json()
         with self._conn:
@@ -189,12 +195,17 @@ class LocalStore:
             domains: Domain tags to search for.
             language: Optional programming language filter.
             framework: Optional framework filter.
-            limit: Maximum number of results to return.
+            limit: Maximum number of results to return. Must be positive.
 
         Returns:
             Knowledge units ranked by relevance * confidence, descending.
+
+        Raises:
+            ValueError: If limit is not positive.
         """
         self._check_open()
+        if limit <= 0:
+            raise ValueError("limit must be positive")
         if not domains:
             return []
 

@@ -132,6 +132,11 @@ class TestInsert:
         domains = _inspect_domains(store.db_path, unit.id)
         assert domains == ["api", "payments", "stripe"]
 
+    def test_insert_with_empty_domains_raises(self, store: LocalStore):
+        unit = _make_unit(domain=["  ", ""])
+        with pytest.raises(ValueError, match="At least one non-empty domain"):
+            store.insert(unit)
+
 
 class TestGet:
     def test_returns_none_for_missing_id(self, store: LocalStore):
@@ -172,6 +177,13 @@ class TestUpdate:
         unit = _make_unit()
         with pytest.raises(KeyError, match="Knowledge unit not found"):
             store.update(unit)
+
+    def test_update_with_empty_domains_raises(self, store: LocalStore):
+        unit = _make_unit(domain=["databases"])
+        store.insert(unit)
+        updated = unit.model_copy(update={"domain": ["  ", ""]})
+        with pytest.raises(ValueError, match="At least one non-empty domain"):
+            store.update(updated)
 
     def test_update_refreshes_domain_tags(self, store: LocalStore):
         unit = _make_unit(domain=["databases"])
@@ -219,6 +231,12 @@ class TestQuery:
 
         results = store.query([])
         assert results == []
+
+    def test_rejects_non_positive_limit(self, store: LocalStore):
+        with pytest.raises(ValueError, match="limit must be positive"):
+            store.query(["databases"], limit=0)
+        with pytest.raises(ValueError, match="limit must be positive"):
+            store.query(["databases"], limit=-1)
 
     def test_ranks_by_domain_overlap(self, store: LocalStore):
         high_relevance = _make_unit(domain=["databases", "performance"])
