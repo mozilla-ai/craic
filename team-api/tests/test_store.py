@@ -1,0 +1,157 @@
+"""Tests for the SQLite-backed team knowledge store."""
+
+import sqlite3
+from collections.abc import Iterator
+from pathlib import Path
+from typing import Any
+
+import pytest
+from team_api.knowledge_unit import (
+    Context,
+    FlagReason,
+    Insight,
+    KnowledgeUnit,
+    Tier,
+    create_knowledge_unit,
+)
+from team_api.scoring import apply_confirmation, apply_flag
+from team_api.store import TeamStore
+
+
+def _make_insight(**overrides: Any) -> Insight:
+    defaults = {
+        "summary": "Use connection pooling",
+        "detail": "Database connections are expensive to create.",
+        "action": "Configure a connection pool with a max size of 10.",
+    }
+    return Insight(**{**defaults, **overrides})
+
+
+def _make_unit(**overrides: Any) -> KnowledgeUnit:
+    defaults = {
+        "domain": ["databases", "performance"],
+        "insight": _make_insight(),
+    }
+    return create_knowledge_unit(**{**defaults, **overrides})
+
+
+@pytest.fixture()
+def store(tmp_path: Path) -> Iterator[TeamStore]:
+    s = TeamStore(db_path=tmp_path / "test.db")
+    yield s
+    s.close()
+
+
+class TestInsertAndGet:
+    def test_insert_and_retrieve(self, store: TeamStore) -> None:
+        unit = _make_unit()
+        store.insert(unit)
+        retrieved = store.get(unit.id)
+        assert retrieved == unit
+
+    def test_insert_duplicate_raises(self, store: TeamStore) -> None:
+        unit = _make_unit()
+        store.insert(unit)
+        with pytest.raises(sqlite3.IntegrityError):
+            store.insert(unit)
+
+    def test_returns_none_for_missing_id(self, store: TeamStore) -> None:
+        assert store.get("ku_nonexistent") is None
+
+    def test_insert_with_empty_domains_raises(self, store: TeamStore) -> None:
+        unit = _make_unit(domain=["  ", ""])
+        with pytest.raises(ValueError, match="At least one non-empty domain"):
+            store.insert(unit)
+
+
+class TestUpdate:
+    def test_update_persists_changes(self, store: TeamStore) -> None:
+        unit = _make_unit()
+        store.insert(unit)
+        confirmed = apply_confirmation(unit)
+        store.update(confirmed)
+        retrieved = store.get(unit.id)
+        assert retrieved is not None
+        assert retrieved.evidence.confirmations == 2
+
+    def test_update_missing_unit_raises(self, store: TeamStore) -> None:
+        unit = _make_unit()
+        with pytest.raises(KeyError, match="Knowledge unit not found"):
+            store.update(unit)
+
+    def test_update_with_empty_domains_raises(self, store: TeamStore) -> None:
+        unit = _make_unit(domain=["databases"])
+        store.insert(unit)
+        updated = unit.model_copy(update={"domain": ["  "]})
+        with pytest.raises(ValueError, match="At least one non-empty domain"):
+            store.update(updated)
+
+
+class TestQuery:
+    def test_returns_matching_units(self, store: TeamStore) -> None:
+        unit = _make_unit(domain=["databases"])
+        store.insert(unit)
+        results = store.query(["databases"])
+        assert len(results) == 1
+        assert results[0].id == unit.id
+
+    def test_returns_empty_for_no_match(self, store: TeamStore) -> None:
+        unit = _make_unit(domain=["databases"])
+        store.insert(unit)
+        assert store.query(["networking"]) == []
+
+    def test_filters_by_language(self, store: TeamStore) -> None:
+        py = _make_unit(domain=["web"], context=Context(languages=["python"]))
+        go = _make_unit(domain=["web"], context=Context(languages=["go"]))
+        store.insert(py)
+        store.insert(go)
+        results = store.query(["web"], language="python")
+        assert len(results) == 1
+        assert results[0].id == py.id
+
+    def test_rejects_non_positive_limit(self, store: TeamStore) -> None:
+        with pytest.raises(ValueError, match="limit must be positive"):
+            store.query(["databases"], limit=0)
+
+
+class TestStats:
+    def test_count_empty_store(self, store: TeamStore) -> None:
+        assert store.count() == 0
+
+    def test_count_after_inserts(self, store: TeamStore) -> None:
+        store.insert(_make_unit(domain=["a"]))
+        store.insert(_make_unit(domain=["b"]))
+        assert store.count() == 2
+
+    def test_domain_counts(self, store: TeamStore) -> None:
+        store.insert(_make_unit(domain=["api", "payments"]))
+        store.insert(_make_unit(domain=["api", "auth"]))
+        counts = store.domain_counts()
+        assert counts["api"] == 2
+        assert counts["payments"] == 1
+        assert counts["auth"] == 1
+
+
+class TestEndToEnd:
+    def test_propose_confirm_flag_lifecycle(self, store: TeamStore) -> None:
+        unit = _make_unit(
+            domain=["api", "payments"],
+            context=Context(languages=["python"], frameworks=["fastapi"]),
+            tier=Tier.TEAM,
+        )
+        store.insert(unit)
+
+        results = store.query(["api", "payments"], language="python")
+        assert len(results) == 1
+        assert results[0].evidence.confidence == 0.5
+
+        confirmed = apply_confirmation(results[0])
+        store.update(confirmed)
+        results = store.query(["api", "payments"])
+        assert results[0].evidence.confidence == pytest.approx(0.6)
+
+        flagged = apply_flag(results[0], FlagReason.STALE)
+        store.update(flagged)
+        results = store.query(["api", "payments"])
+        assert results[0].evidence.confidence == pytest.approx(0.45)
+        assert len(results[0].flags) == 1
