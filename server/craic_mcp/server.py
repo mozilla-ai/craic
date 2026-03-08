@@ -23,6 +23,8 @@ from .scoring import apply_confirmation, apply_flag
 
 mcp = FastMCP("craic")
 
+_MAX_QUERY_LIMIT = 50
+
 _store: LocalStore | None = None
 _store_lock = threading.Lock()
 
@@ -78,6 +80,8 @@ def craic_query(
         return {"error": "At least one non-empty domain tag is required."}
     if limit < 1:
         return {"error": "limit must be a positive integer."}
+    if limit > _MAX_QUERY_LIMIT:
+        return {"error": f"limit must not exceed {_MAX_QUERY_LIMIT}."}
     store = _get_store()
     results = store.query(cleaned, language=language, framework=framework, limit=limit)
     return {
@@ -120,11 +124,14 @@ def craic_propose(
     cleaned_domain = [d.strip() for d in domain if d.strip()]
     if not cleaned_domain:
         return {"error": "At least one non-empty domain tag is required."}
+    cleaned_language = language.strip() if language else None
+    cleaned_framework = framework.strip() if framework else None
+    cleaned_pattern = pattern.strip() if pattern else ""
     store = _get_store()
     context = Context(
-        languages=[language] if language else [],
-        frameworks=[framework] if framework else [],
-        pattern=pattern,
+        languages=[cleaned_language] if cleaned_language else [],
+        frameworks=[cleaned_framework] if cleaned_framework else [],
+        pattern=cleaned_pattern,
     )
     unit = create_knowledge_unit(
         domain=cleaned_domain,
@@ -180,8 +187,9 @@ def craic_flag(unit_id: str, reason: str) -> dict:
     unit = store.get(unit_id)
     if unit is None:
         return {"error": f"Knowledge unit not found: {unit_id}"}
+    cleaned_reason = reason.strip().lower()
     try:
-        flag_reason = FlagReason(reason)
+        flag_reason = FlagReason(cleaned_reason)
     except ValueError:
         valid = ", ".join(r.value for r in FlagReason)
         return {"error": f"Invalid reason: {reason}. Must be one of: {valid}."}

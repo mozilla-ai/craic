@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from craic_mcp import server
 from craic_mcp.server import (
+    _MAX_QUERY_LIMIT,
     craic_confirm,
     craic_flag,
     craic_propose,
@@ -92,6 +93,11 @@ class TestCraicQuery:
         result = craic_query(domain=["api"], limit=-1)
         assert "error" in result
 
+    def test_query_exceeding_max_limit_returns_error(self) -> None:
+        result = craic_query(domain=["api"], limit=_MAX_QUERY_LIMIT + 1)
+        assert "error" in result
+        assert str(_MAX_QUERY_LIMIT) in result["error"]
+
     def test_query_whitespace_only_domains_returns_error(self) -> None:
         result = craic_query(domain=["", "  "])
         assert "error" in result
@@ -144,6 +150,23 @@ class TestCraicPropose:
         )
         assert "error" in result
 
+    def test_propose_strips_whitespace_from_language(self) -> None:
+        _propose_unit(domain=["web"], language="  python  ")
+        result = craic_query(domain=["web"], language="python")
+        assert len(result["results"]) == 1
+        assert "python" in result["results"][0]["context"]["languages"]
+
+    def test_propose_strips_whitespace_from_framework(self) -> None:
+        _propose_unit(domain=["web"], framework="  fastapi  ")
+        result = craic_query(domain=["web"], framework="fastapi")
+        assert len(result["results"]) == 1
+        assert "fastapi" in result["results"][0]["context"]["frameworks"]
+
+    def test_propose_treats_whitespace_only_language_as_none(self) -> None:
+        _propose_unit(domain=["web"], language="   ")
+        result = craic_query(domain=["web"])
+        assert result["results"][0]["context"]["languages"] == []
+
     def test_propose_stores_retrievable_unit(self) -> None:
         result = _propose_unit(domain=["testing"])
         confirmed = craic_confirm(unit_id=result["id"])
@@ -173,6 +196,16 @@ class TestCraicFlag:
     def test_flag_missing_unit_returns_error(self) -> None:
         result = craic_flag(unit_id="ku_nonexistent", reason="stale")
         assert "error" in result
+
+    def test_flag_normalises_reason_whitespace(self) -> None:
+        proposed = _propose_unit()
+        result = craic_flag(unit_id=proposed["id"], reason="  stale  ")
+        assert result["new_confidence"] == pytest.approx(0.35)
+
+    def test_flag_normalises_reason_case(self) -> None:
+        proposed = _propose_unit()
+        result = craic_flag(unit_id=proposed["id"], reason="STALE")
+        assert result["new_confidence"] == pytest.approx(0.35)
 
     def test_flag_invalid_reason_returns_error(self) -> None:
         proposed = _propose_unit()
