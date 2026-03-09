@@ -20,6 +20,7 @@ from craic_mcp.server import (
     craic_propose,
     craic_query,
     craic_reflect,
+    craic_status,
 )
 
 
@@ -465,6 +466,32 @@ class TestCraicReflect:
         assert result["candidates"] == []
         assert "empty" in result["message"].lower()
         assert result["status"] == "stub"
+
+
+class TestCraicStatus:
+    def test_status_empty_store(self) -> None:
+        result = craic_status()
+        assert result["total_count"] == 0
+        assert result["domain_counts"] == {}
+        assert result["recent"] == []
+
+    def test_status_returns_statistics(self) -> None:
+        _propose_unit(domain=["api", "payments"])
+        _propose_unit(domain=["api", "databases"])
+        _propose_unit(domain=["databases"])
+        result = craic_status()
+        assert result["total_count"] == 3
+        assert result["domain_counts"]["api"] == 2
+        assert result["domain_counts"]["databases"] == 2
+        assert result["domain_counts"]["payments"] == 1
+        assert len(result["recent"]) == 3
+        assert "confidence_distribution" in result
+
+    def test_status_returns_confidence_distribution(self) -> None:
+        _propose_unit(domain=["api"])
+        result = craic_status()
+        # Default confidence is 0.5, falls in "0.5-0.7" bucket.
+        assert result["confidence_distribution"]["0.5-0.7"] == 1
 
 
 class TestEndToEnd:

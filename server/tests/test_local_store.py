@@ -1,11 +1,13 @@
 import sqlite3
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import pytest
 from craic_mcp.knowledge_unit import (
     Context,
+    Evidence,
     FlagReason,
     Insight,
     KnowledgeUnit,
@@ -407,3 +409,109 @@ class TestEndToEnd:
         with LocalStore(db_path=db_path) as store:
             retrieved = store.get(unit.id)
             assert retrieved == unit
+
+
+class TestStats:
+    def test_empty_store_returns_zero_counts(self, store: LocalStore):
+        result = store.stats()
+        assert result.total_count == 0
+        assert result.domain_counts == {}
+        assert result.recent == []
+        assert result.confidence_distribution == {
+            "0.0-0.3": 0,
+            "0.3-0.5": 0,
+            "0.5-0.7": 0,
+            "0.7-1.0": 0,
+        }
+
+    def test_total_count_matches_inserted_units(self, store: LocalStore):
+        for _ in range(3):
+            store.insert(_make_unit(domain=["api"]))
+        result = store.stats()
+        assert result.total_count == 3
+
+    def test_domain_counts_across_multiple_units(self, store: LocalStore):
+        store.insert(_make_unit(domain=["api", "payments"]))
+        store.insert(_make_unit(domain=["api", "databases"]))
+        store.insert(_make_unit(domain=["databases"]))
+        result = store.stats()
+        assert result.domain_counts == {"api": 2, "databases": 2, "payments": 1}
+
+    def test_recent_ordered_by_last_confirmed_descending(self, store: LocalStore):
+        now = datetime.now(UTC)
+        old_unit = _make_unit(
+            domain=["api"],
+            context=Context(languages=["python"]),
+        )
+        old_unit = old_unit.model_copy(
+            update={
+                "evidence": Evidence(
+                    first_observed=now - timedelta(days=10),
+                    last_confirmed=now - timedelta(days=10),
+                ),
+            },
+        )
+        new_unit = _make_unit(
+            domain=["api"],
+            context=Context(languages=["go"]),
+        )
+        new_unit = new_unit.model_copy(
+            update={
+                "evidence": Evidence(
+                    first_observed=now - timedelta(days=1),
+                    last_confirmed=now - timedelta(days=1),
+                ),
+            },
+        )
+        store.insert(old_unit)
+        store.insert(new_unit)
+
+        result = store.stats()
+        assert len(result.recent) == 2
+        assert result.recent[0].id == new_unit.id
+        assert result.recent[1].id == old_unit.id
+
+    def test_recent_respects_limit(self, store: LocalStore):
+        for _ in range(10):
+            store.insert(_make_unit(domain=["api"]))
+        result = store.stats(recent_limit=3)
+        assert len(result.recent) == 3
+
+    def test_confidence_distribution_buckets(self, store: LocalStore):
+        # Default confidence is 0.5, which falls in "0.5-0.7".
+        unit_mid = _make_unit(domain=["api"])
+        store.insert(unit_mid)
+
+        # Confirm twice to reach 0.7, which falls in "0.7-1.0".
+        high_unit = _make_unit(domain=["api"])
+        store.insert(high_unit)
+        confirmed = apply_confirmation(high_unit)
+        confirmed = apply_confirmation(confirmed)
+        store.update(confirmed)
+
+        # Flag twice to reach 0.2, which falls in "0.0-0.3".
+        low_unit = _make_unit(domain=["api"])
+        store.insert(low_unit)
+        flagged = apply_flag(low_unit, FlagReason.STALE)
+        flagged = apply_flag(flagged, FlagReason.STALE)
+        store.update(flagged)
+
+        # Flag once to reach 0.35, which falls in "0.3-0.5".
+        mid_low_unit = _make_unit(domain=["api"])
+        store.insert(mid_low_unit)
+        flagged_once = apply_flag(mid_low_unit, FlagReason.STALE)
+        store.update(flagged_once)
+
+        result = store.stats()
+        assert result.confidence_distribution == {
+            "0.0-0.3": 1,
+            "0.3-0.5": 1,
+            "0.5-0.7": 1,
+            "0.7-1.0": 1,
+        }
+
+    def test_stats_raises_when_store_closed(self, tmp_path: Path):
+        s = LocalStore(db_path=tmp_path / "test.db")
+        s.close()
+        with pytest.raises(RuntimeError, match="LocalStore is closed"):
+            s.stats()

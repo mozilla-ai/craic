@@ -6,13 +6,37 @@ Implements the context manager protocol for deterministic resource cleanup.
 """
 
 import sqlite3
+from datetime import UTC, datetime
 from pathlib import Path
 from types import TracebackType
+
+from pydantic import BaseModel, Field
 
 from .knowledge_unit import KnowledgeUnit
 from .scoring import calculate_relevance
 
+# Sort fallback for knowledge units with no last_confirmed timestamp.
+_EPOCH_UTC = datetime.min.replace(tzinfo=UTC)
+
+# Confidence distribution bucket boundaries (upper bound, label).
+_CONFIDENCE_BUCKETS: list[tuple[float, str]] = [
+    (0.3, "0.0-0.3"),
+    (0.5, "0.3-0.5"),
+    (0.7, "0.5-0.7"),
+    (float("inf"), "0.7-1.0"),
+]
+
 DEFAULT_DB_PATH = Path.home() / ".craic" / "local.db"
+
+
+class StoreStats(BaseModel):
+    """Aggregated statistics for the local knowledge store."""
+
+    total_count: int
+    domain_counts: dict[str, int] = Field(default_factory=dict)
+    recent: list[KnowledgeUnit] = Field(default_factory=list)
+    confidence_distribution: dict[str, int] = Field(default_factory=dict)
+
 
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS knowledge_units (
@@ -246,3 +270,44 @@ class LocalStore:
 
         scored.sort(key=lambda pair: pair[0], reverse=True)
         return [unit for _, unit in scored[:limit]]
+
+    def stats(self, *, recent_limit: int = 5) -> StoreStats:
+        """Return aggregated statistics for the local store.
+
+        Args:
+            recent_limit: Maximum number of recent additions to include.
+
+        Returns:
+            Store statistics including total count, domain breakdown,
+            most recent additions, and confidence distribution.
+        """
+        self._check_open()
+
+        total = self._conn.execute("SELECT COUNT(*) FROM knowledge_units").fetchone()[0]
+
+        domain_rows = self._conn.execute(
+            "SELECT domain, COUNT(*) AS cnt FROM knowledge_unit_domains GROUP BY domain ORDER BY cnt DESC"
+        ).fetchall()
+        domain_counts = {row[0]: row[1] for row in domain_rows}
+
+        all_rows = self._conn.execute("SELECT data FROM knowledge_units").fetchall()
+        units = [KnowledgeUnit.model_validate_json(row[0]) for row in all_rows]
+
+        units.sort(
+            key=lambda u: u.evidence.last_confirmed or _EPOCH_UTC,
+            reverse=True,
+        )
+        recent = units[:recent_limit]
+
+        buckets = {label: 0 for _, label in _CONFIDENCE_BUCKETS}
+        for unit in units:
+            c = unit.evidence.confidence
+            label = next(lb for t, lb in _CONFIDENCE_BUCKETS if c < t)
+            buckets[label] += 1
+
+        return StoreStats(
+            total_count=total,
+            domain_counts=domain_counts,
+            recent=recent,
+            confidence_distribution=buckets,
+        )

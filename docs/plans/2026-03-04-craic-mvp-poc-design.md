@@ -92,7 +92,7 @@ Minimal version of the full CRAIC knowledge unit spec. Enough to prove the conce
 
 ```json
 {
-  "id": "ku_<nanoid>",
+  "id": "ku_<uuid4hex>",
   "version": 1,
   "domain": ["api", "payments", "stripe"],
   "insight": {

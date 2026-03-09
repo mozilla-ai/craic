@@ -462,6 +462,23 @@ def craic_reflect(session_context: str) -> dict:
     }
 
 
+@mcp.tool()
+def craic_status() -> dict:
+    """Return local knowledge store statistics.
+
+    Provides an overview of the local store: total knowledge unit count,
+    domain tag breakdown, most recent additions, and confidence score
+    distribution across defined buckets.
+
+    Returns:
+        Dict with ``total_count``, ``domain_counts``, ``recent``
+        (serialised knowledge units), and ``confidence_distribution``.
+    """
+    store = _get_store()
+    result = store.stats()
+    return result.model_dump(mode="json")
+
+
 def main() -> None:
     """Start the CRAIC MCP server."""
     mcp.run()
