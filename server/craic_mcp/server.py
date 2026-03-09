@@ -38,7 +38,8 @@ _store_local = threading.local()
 _store_registry: list[LocalStore] = []
 _store_registry_lock = threading.Lock()
 
-_team_client: TeamClient | None = None
+_DISABLED_SENTINEL = object()
+_team_client: TeamClient | object | None = None
 _team_client_lock = threading.Lock()
 
 
@@ -62,12 +63,17 @@ def _get_store() -> LocalStore:
 
 
 def _close_store() -> None:
-    """Close all registered stores across all threads."""
+    """Close all registered stores and clear the registry.
+
+    Only safe to call during shutdown (via atexit) or in tests where no
+    other threads are accessing stores. Thread-local references on other
+    threads become stale after this call.
+    """
     with _store_registry_lock:
         for store in _store_registry:
             store.close()
         _store_registry.clear()
-    # Also clear the thread-local reference for the current thread.
+    # Clear the thread-local reference for the current thread.
     if getattr(_store_local, "store", None) is not None:
         _store_local.store = None
 
@@ -77,29 +83,35 @@ def _get_team_client() -> TeamClient | None:
 
     Returns None if the team API URL is explicitly disabled (empty string).
     The client is a module-level singleton since httpx.Client is thread-safe.
-    Initialisation is guarded by a lock to prevent duplicate creation.
+    Initialisation is guarded by a lock to prevent duplicate creation. A
+    sentinel distinguishes "disabled" from "not yet initialised" so the
+    disabled path skips the lock on subsequent calls.
     """
     global _team_client  # noqa: PLW0603
-    if _team_client is not None:
+    if _team_client is _DISABLED_SENTINEL:
+        return None
+    if isinstance(_team_client, TeamClient):
         return _team_client
     with _team_client_lock:
-        # Double-check after acquiring the lock.
-        if _team_client is not None:
+        if _team_client is _DISABLED_SENTINEL:
+            return None
+        if isinstance(_team_client, TeamClient):
             return _team_client
         url = os.environ.get("CRAIC_TEAM_API_URL", _DEFAULT_TEAM_API_URL)
         if not url:
+            _team_client = _DISABLED_SENTINEL
             return None
         _team_client = TeamClient(base_url=url)
     return _team_client
 
 
 def _close_team_client() -> None:
-    """Close the team client if open."""
+    """Close the team client if open and reset to uninitialised state."""
     global _team_client  # noqa: PLW0603
     with _team_client_lock:
-        if _team_client is not None:
+        if isinstance(_team_client, TeamClient):
             _team_client.close()
-            _team_client = None
+        _team_client = None
 
 
 atexit.register(_close_store)
@@ -126,8 +138,8 @@ def _merge_results(
 
     Returns:
         Tuple of (serialised results, source indicator). The source
-        reflects whether each store was *consulted*, not just whether
-        its results survived deduplication.
+        reflects whether each store was consulted and returned results,
+        not just whether its results survived deduplication.
     """
     if team_units is None:
         return (
@@ -199,7 +211,7 @@ def craic_query(
         Dict with ``results`` (list of knowledge unit dicts) and ``source``
         ("local", "team", or "both"), or ``error`` if inputs are invalid.
     """
-    cleaned = [d.strip() for d in domain if d.strip()]
+    cleaned = [d.strip().lower() for d in domain if d.strip()]
     if not cleaned:
         return {"error": "At least one non-empty domain tag is required."}
     if limit < 1:
