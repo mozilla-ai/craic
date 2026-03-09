@@ -71,14 +71,14 @@ For each candidate, assign:
   - 0.2–0.5: applicable only under narrow conditions.
 - Optionally: **language**, **framework**, **pattern** if relevant.
 
-If the session contained no events meeting the above criteria, note that explicitly and stop after this step.
+If the session contained no events meeting the above criteria, skip Steps 4–6 and follow the "no candidates" instruction in Step 7.
 
 ### Step 4 — Present candidates to the user
 
 Open with:
 
 ```
-I identified {N} potential learning{s} from this session worth sharing with the commons.
+I identified {N} potential learning candidates from this session worth sharing with the commons.
 ```
 
 Present each candidate as a numbered entry:
