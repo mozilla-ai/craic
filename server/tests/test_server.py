@@ -28,7 +28,7 @@ from craic_mcp.server import (
 def _store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Provide a fresh local store and no team client for each test."""
     monkeypatch.setenv("CRAIC_LOCAL_DB_PATH", str(tmp_path / "test.db"))
-    monkeypatch.setenv("CRAIC_TEAM_API_URL", "")
+    monkeypatch.setenv("CRAIC_TEAM_ADDR", "")
     server._close_store()
     server._close_team_client()
     yield

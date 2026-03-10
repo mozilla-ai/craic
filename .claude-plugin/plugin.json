@@ -8,10 +8,7 @@
   "mcpServers": {
     "craic": {
       "command": "uv",
-      "args": ["run", "--directory", "server", "craic-mcp-server"],
-      "env": {
-        "CRAIC_TEAM_API_URL": "http://localhost:8742"
-      }
+      "args": ["run", "--directory", "server", "craic-mcp-server"]
     }
   }
 }

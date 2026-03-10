@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 mcp = FastMCP("craic")
 
 _MAX_QUERY_LIMIT = 50
-_DEFAULT_TEAM_API_URL = "http://localhost:8742"
+_DEFAULT_TEAM_ADDR = "http://localhost:8742"
 
 _store_local = threading.local()
 _store_registry: list[LocalStore] = []
@@ -97,7 +97,7 @@ def _get_team_client() -> TeamClient | None:
             return None
         if isinstance(_team_client, TeamClient):
             return _team_client
-        url = os.environ.get("CRAIC_TEAM_API_URL", _DEFAULT_TEAM_API_URL)
+        url = os.environ.get("CRAIC_TEAM_ADDR", _DEFAULT_TEAM_ADDR)
         if not url:
             _team_client = _DISABLED_SENTINEL
             return None
