@@ -181,3 +181,11 @@ The developer asks you to set up a Rust CI pipeline with GitHub Actions using a 
    > **Action:** Remove `rust-toolchain.toml` from the repo root when using matrix-based toolchain selection, or use the file as the single source of truth and remove the matrix toolchain input.
 4. Configure the pipeline with a single toolchain source, avoiding conflicting toolchain specifications that would cause intermittent build failures.
 5. Call `craic_confirm` with the knowledge unit's ID.
+
+## Before Completing a Task
+
+Before responding to the user that a task is done, check:
+
+- [ ] Did you use any CRAIC knowledge during this task? Call `craic_confirm` for each KU that proved correct.
+- [ ] Did you discover anything novel — undocumented behaviour, version gotchas, non-obvious workarounds? Call `craic_propose`.
+- [ ] Did any CRAIC knowledge turn out to be wrong or stale? Call `craic_flag`.
