@@ -8,7 +8,8 @@
   "mcpServers": {
     "craic": {
       "command": "uv",
-      "args": ["run", "--directory", "server", "craic-mcp-server"]
+      "args": ["run", "--directory", "server", "craic-mcp-server"],
+      "cwd": "${CLAUDE_PLUGIN_ROOT}"
     }
   }
 }
