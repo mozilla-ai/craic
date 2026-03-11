@@ -86,18 +86,18 @@ class TestCraicQuery:
         assert len(result["results"]) == 1
         assert "databases" in result["results"][0]["domain"]
 
-    def test_query_filters_by_language(self) -> None:
+    def test_query_boosts_matching_language(self) -> None:
         _propose_unit(domain=["web"], language="python")
         _propose_unit(domain=["web"], language="go")
         result = craic_query(domain=["web"], language="python")
-        assert len(result["results"]) == 1
+        assert len(result["results"]) == 2
         assert "python" in result["results"][0]["context"]["languages"]
 
-    def test_query_filters_by_framework(self) -> None:
+    def test_query_boosts_matching_framework(self) -> None:
         _propose_unit(domain=["web"], framework="fastapi")
         _propose_unit(domain=["web"], framework="django")
         result = craic_query(domain=["web"], framework="fastapi")
-        assert len(result["results"]) == 1
+        assert len(result["results"]) == 2
         assert "fastapi" in result["results"][0]["context"]["frameworks"]
 
     def test_query_respects_limit(self) -> None:

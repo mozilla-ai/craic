@@ -257,7 +257,7 @@ class TestQuery:
         results = store.query(["databases"], limit=3)
         assert len(results) == 3
 
-    def test_filters_by_language(self, store: LocalStore):
+    def test_language_boosts_ranking_without_excluding(self, store: LocalStore):
         python_unit = _make_unit(
             domain=["databases"],
             context=Context(languages=["python"]),
@@ -270,10 +270,10 @@ class TestQuery:
         store.insert(go_unit)
 
         results = store.query(["databases"], language="python")
-        assert len(results) == 1
+        assert len(results) == 2
         assert results[0].id == python_unit.id
 
-    def test_filters_by_framework(self, store: LocalStore):
+    def test_framework_boosts_ranking_without_excluding(self, store: LocalStore):
         django_unit = _make_unit(
             domain=["web"],
             context=Context(frameworks=["django"]),
@@ -286,10 +286,10 @@ class TestQuery:
         store.insert(flask_unit)
 
         results = store.query(["web"], framework="django")
-        assert len(results) == 1
+        assert len(results) == 2
         assert results[0].id == django_unit.id
 
-    def test_combined_language_and_framework_filter(self, store: LocalStore):
+    def test_combined_language_and_framework_boosts_ranking(self, store: LocalStore):
         match = _make_unit(
             domain=["web"],
             context=Context(languages=["python"], frameworks=["django"]),
@@ -302,7 +302,7 @@ class TestQuery:
         store.insert(partial)
 
         results = store.query(["web"], language="python", framework="django")
-        assert len(results) == 1
+        assert len(results) == 2
         assert results[0].id == match.id
 
     def test_higher_confidence_ranks_higher(self, store: LocalStore):
