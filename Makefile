@@ -66,6 +66,8 @@ lint:
 	cd plugins/craic/server && uv run ruff format --check .
 	cd team-api && uv run ruff check .
 	cd team-api && uv run ruff format --check .
+	cd team-ui && pnpm tsc -b
+	cd team-ui && pnpm lint
 
 .PHONY: format
 format:
@@ -81,6 +83,7 @@ format-check:
 typecheck:
 	cd plugins/craic/server && uv sync --group dev && uvx ty check craic_mcp --python .venv
 	cd team-api && uv sync --group dev && uvx ty check team_api --python .venv
+	cd team-ui && pnpm tsc -b
 
 .PHONY: test
 test:

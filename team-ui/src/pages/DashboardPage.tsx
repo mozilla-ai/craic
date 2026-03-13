@@ -7,13 +7,15 @@ import { timeAgo } from "../utils";
 import type { ReviewStatsResponse, DailyCount } from "../types";
 
 function useCumulativeTotals(daily: DailyCount[]) {
-  return useMemo(() => {
-    let running = 0;
-    return daily.map((d) => {
-      running += d.proposed;
-      return { ...d, total: running };
-    });
-  }, [daily]);
+  return useMemo(
+    () =>
+      daily.reduce<Array<DailyCount & { total: number }>>((acc, d) => {
+        const total = (acc.length > 0 ? acc[acc.length - 1].total : 0) + d.proposed;
+        acc.push({ ...d, total });
+        return acc;
+      }, []),
+    [daily],
+  );
 }
 
 const CONFIDENCE_COLORS: Record<string, string> = {
