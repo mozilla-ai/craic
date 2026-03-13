@@ -10,6 +10,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from .auth import router as auth_router
 from .knowledge_unit import (
     Context,
     FlagReason,
@@ -55,16 +56,21 @@ def _get_store() -> TeamStore:
 
 
 @asynccontextmanager
-async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+async def lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
     """Manage the store lifecycle."""
     global _store  # noqa: PLW0603
+    jwt_secret = os.environ.get("CRAIC_JWT_SECRET")
+    if not jwt_secret:
+        raise RuntimeError("CRAIC_JWT_SECRET environment variable is required")
     db_path = Path(os.environ.get("CRAIC_DB_PATH", "/data/team.db"))
     _store = TeamStore(db_path=db_path)
+    app_instance.state.store = _store
     yield
     _store.close()
 
 
 app = FastAPI(title="CRAIC Team API", version="0.1.0", lifespan=lifespan)
+app.include_router(auth_router)
 
 
 @app.get("/health")
@@ -91,7 +97,9 @@ def propose_unit(request: ProposeRequest) -> KnowledgeUnit:
     store = _get_store()
     domains = normalise_domains(request.domain)
     if not domains:
-        raise HTTPException(status_code=422, detail="At least one non-empty domain is required")
+        raise HTTPException(
+            status_code=422, detail="At least one non-empty domain is required"
+        )
     unit = create_knowledge_unit(
         domain=domains,
         insight=request.insight,

@@ -12,6 +12,7 @@ from team_api.app import app
 @pytest.fixture()
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     monkeypatch.setenv("CRAIC_DB_PATH", str(tmp_path / "test.db"))
+    monkeypatch.setenv("CRAIC_JWT_SECRET", "test-secret")
     with TestClient(app) as c:
         yield c
 
@@ -68,7 +69,9 @@ class TestPropose:
         resp = client.post("/propose", json=payload)
         assert resp.status_code == 422
 
-    def test_propose_with_whitespace_only_domains_rejected(self, client: TestClient) -> None:
+    def test_propose_with_whitespace_only_domains_rejected(
+        self, client: TestClient
+    ) -> None:
         payload = _propose_payload(domain=["  ", ""])
         resp = client.post("/propose", json=payload)
         assert resp.status_code == 422

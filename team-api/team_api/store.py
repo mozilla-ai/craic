@@ -125,7 +125,9 @@ class TeamStore:
         unit = unit.model_copy(update={"domain": domains})
         data = unit.model_dump_json()
         created_at = (
-            unit.evidence.first_observed.isoformat() if unit.evidence.first_observed else datetime.now(UTC).isoformat()
+            unit.evidence.first_observed.isoformat()
+            if unit.evidence.first_observed
+            else datetime.now(UTC).isoformat()
         )
         with self._lock, self._conn:
             self._conn.execute(
@@ -337,7 +339,9 @@ class TeamStore:
             ).fetchall()
         return {row[0]: row[1] for row in rows}
 
-    def pending_queue(self, *, limit: int = 20, offset: int = 0) -> list[dict[str, Any]]:
+    def pending_queue(
+        self, *, limit: int = 20, offset: int = 0
+    ) -> list[dict[str, Any]]:
         """Return pending KUs with review metadata, oldest first.
 
         Args:
@@ -370,15 +374,57 @@ class TeamStore:
         """Return the number of pending KUs."""
         self._check_open()
         with self._lock:
-            row = self._conn.execute("SELECT COUNT(*) FROM knowledge_units WHERE status = 'pending'").fetchone()
+            row = self._conn.execute(
+                "SELECT COUNT(*) FROM knowledge_units WHERE status = 'pending'"
+            ).fetchone()
         return row[0]
 
     def counts_by_status(self) -> dict[str, int]:
         """Return KU counts grouped by review status."""
         self._check_open()
         with self._lock:
-            rows = self._conn.execute("SELECT status, COUNT(*) FROM knowledge_units GROUP BY status").fetchall()
+            rows = self._conn.execute(
+                "SELECT status, COUNT(*) FROM knowledge_units GROUP BY status"
+            ).fetchall()
         return {row[0]: row[1] for row in rows}
+
+    def create_user(self, username: str, password_hash: str) -> None:
+        """Insert a new user.
+
+        Args:
+            username: The user's login name.
+            password_hash: Bcrypt hash of the user's password.
+
+        Raises:
+            sqlite3.IntegrityError: If a user with the same username already exists.
+        """
+        self._check_open()
+        now = datetime.now(UTC).isoformat()
+        with self._lock, self._conn:
+            self._conn.execute(
+                "INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)",
+                (username, password_hash, now),
+            )
+
+    def get_user(self, username: str) -> dict[str, str] | None:
+        """Retrieve a user by username.
+
+        Args:
+            username: The user's login name.
+
+        Returns:
+            A dict with username, password_hash, and created_at keys, or None
+            if no user with that username exists.
+        """
+        self._check_open()
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT username, password_hash, created_at FROM users WHERE username = ?",
+                (username,),
+            ).fetchone()
+        if row is None:
+            return None
+        return {"username": row[0], "password_hash": row[1], "created_at": row[2]}
 
     def daily_counts(self, *, days: int = 30) -> list[dict[str, Any]]:
         """Return daily proposal counts for the last N days.
