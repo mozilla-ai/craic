@@ -11,6 +11,7 @@ from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from .auth import router as auth_router
+from .review import router as review_router
 from .knowledge_unit import (
     Context,
     FlagReason,
@@ -71,6 +72,7 @@ async def lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title="CRAIC Team API", version="0.1.0", lifespan=lifespan)
 app.include_router(auth_router)
+app.include_router(review_router)
 
 
 @app.get("/health")
