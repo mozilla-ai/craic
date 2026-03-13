@@ -4,6 +4,7 @@ import { ProtectedRoute } from "./components/ProtectedRoute";
 import { Layout } from "./components/Layout";
 import { LoginPage } from "./pages/LoginPage";
 import { ReviewPage } from "./pages/ReviewPage";
+import { DashboardPage } from "./pages/DashboardPage";
 
 function AppRoutes() {
   const { isAuthenticated } = useAuth();
@@ -21,7 +22,7 @@ function AppRoutes() {
         }
       >
         <Route path="/review" element={<ReviewPage />} />
-        <Route path="/dashboard" element={<div>Dashboard (TODO)</div>} />
+        <Route path="/dashboard" element={<DashboardPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/review" replace />} />
     </Routes>
