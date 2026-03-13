@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from "./auth";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { Layout } from "./components/Layout";
 import { LoginPage } from "./pages/LoginPage";
+import { ReviewPage } from "./pages/ReviewPage";
 
 function AppRoutes() {
   const { isAuthenticated } = useAuth();
@@ -19,7 +20,7 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       >
-        <Route path="/review" element={<div>Review Queue (TODO)</div>} />
+        <Route path="/review" element={<ReviewPage />} />
         <Route path="/dashboard" element={<div>Dashboard (TODO)</div>} />
       </Route>
       <Route path="*" element={<Navigate to="/review" replace />} />
