@@ -25,7 +25,7 @@ from .knowledge_unit import (
 )
 from .local_store import LocalStore
 from .scoring import apply_confirmation, apply_flag, calculate_relevance
-from .team_client import TeamClient
+from .team_client import TeamClient, TeamRejectedError
 
 logger = logging.getLogger(__name__)
 
@@ -278,8 +278,10 @@ def craic_propose(
 ) -> dict:
     """Propose a new knowledge unit.
 
-    Always stores in the local store. Also pushes to the team API on a
-    best-effort basis for sharing across the team.
+    When a team API is configured, proposals are sent there for human
+    review and nothing is stored locally. If the team API is unreachable,
+    the unit is stored locally as a fallback. When no team API is
+    configured, the unit is always stored locally.
 
     Args:
         summary: Concise description of the insight.
@@ -306,7 +308,6 @@ def craic_propose(
     cleaned_framework = framework.strip() if framework else None
     cleaned_pattern = pattern.strip() if pattern else ""
 
-    store = _get_store()
     context = Context(
         languages=[cleaned_language] if cleaned_language else [],
         frameworks=[cleaned_framework] if cleaned_framework else [],
@@ -322,24 +323,28 @@ def craic_propose(
         context=context,
         tier=Tier.LOCAL,
     )
-    store.insert(unit)
 
-    result: dict = {
+    team_client = _get_team_client()
+    if team_client is not None:
+        try:
+            team_unit = team_client.propose(unit)
+        except TeamRejectedError as exc:
+            return {"error": f"Team API rejected proposal: {exc.detail}"}
+        if team_unit is not None:
+            return {
+                "id": team_unit.id,
+                "tier": team_unit.tier.value,
+                "message": f"Knowledge unit proposed to team as {team_unit.id}.",
+            }
+        logger.warning("Team API unreachable; falling back to local storage.")
+
+    store = _get_store()
+    store.insert(unit)
+    return {
         "id": unit.id,
         "tier": unit.tier.value,
         "message": f"Knowledge unit {unit.id} stored locally.",
     }
-
-    team_client = _get_team_client()
-    if team_client is not None:
-        team_unit = team_client.propose(unit)
-        if team_unit is not None:
-            result["team_id"] = team_unit.id
-            result["message"] += f" Also shared to team as {team_unit.id}."
-        else:
-            logger.info("Team API unavailable for propose; stored locally only.")
-
-    return result
 
 
 @mcp.tool()

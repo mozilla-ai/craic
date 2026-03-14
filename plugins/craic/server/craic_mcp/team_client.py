@@ -22,6 +22,16 @@ _DEFAULT_TIMEOUT = 5.0
 _GRACEFUL_ERRORS = (httpx.HTTPError, ValueError, ValidationError)
 
 
+class TeamRejectedError(Exception):
+    """Raised when the team API explicitly rejects a request (HTTP 4xx/5xx)."""
+
+    def __init__(self, status_code: int, detail: str) -> None:
+        """Initialise with the HTTP status code and response body."""
+        self.status_code = status_code
+        self.detail = detail
+        super().__init__(f"Team API rejected request ({status_code}): {detail}")
+
+
 class TeamClient:
     """Synchronous HTTP client for the CRAIC Team API.
 
@@ -109,7 +119,11 @@ class TeamClient:
 
         Returns:
             The team-stored unit (with team tier and ID), or None if
-            the team API is unreachable.
+            the team API is unreachable due to a transport error.
+
+        Raises:
+            TeamRejectedError: If the team API explicitly rejects the
+                proposal with an HTTP 4xx/5xx status.
         """
         body = {
             "domain": unit.domain,
@@ -121,8 +135,13 @@ class TeamClient:
             resp = self._client.post("/propose", json=body)
             resp.raise_for_status()
             return KnowledgeUnit.model_validate(resp.json())
+        except httpx.HTTPStatusError as exc:
+            raise TeamRejectedError(
+                status_code=exc.response.status_code,
+                detail=exc.response.text,
+            ) from exc
         except _GRACEFUL_ERRORS:
-            logger.debug("Team API propose failed", exc_info=True)
+            logger.debug("Team API propose unreachable", exc_info=True)
             return None
 
     def confirm(self, unit_id: str) -> KnowledgeUnit | None:

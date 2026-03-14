@@ -11,6 +11,8 @@ ENV/
 dist/
 build/
 
+node_modules/
+
 .ruff_cache/
 
 .pytest_cache/

@@ -302,11 +302,41 @@ class TestCraicProposeWithTeam:
         monkeypatch.setattr(server, "_get_team_client", lambda: mock_client)
 
         result = _propose_unit(domain=["api"])
-        assert result["team_id"] == "ku_team_pushed"
-        assert "shared to team" in result["message"]
+        assert result["id"] == "ku_team_pushed"
+        assert result["tier"] == "team"
+        assert "proposed to team" in result["message"]
         mock_client.propose.assert_called_once()
 
-    def test_propose_succeeds_when_team_unreachable(
+    def test_propose_skips_local_store_when_team_succeeds(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        team_unit = _make_team_unit(unit_id="ku_team_only")
+        mock_client = MagicMock()
+        mock_client.propose.return_value = team_unit
+        monkeypatch.setattr(server, "_get_team_client", lambda: mock_client)
+
+        _propose_unit(domain=["api"])
+        local_results = craic_query(domain=["api"])
+        assert len(local_results["results"]) == 0
+
+    def test_propose_returns_error_when_team_rejects(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from craic_mcp.team_client import TeamRejectedError
+
+        mock_client = MagicMock()
+        mock_client.propose.side_effect = TeamRejectedError(422, "Invalid domain")
+        monkeypatch.setattr(server, "_get_team_client", lambda: mock_client)
+
+        result = _propose_unit(domain=["api"])
+        assert "error" in result
+        assert "rejected" in result["error"].lower()
+        local_results = craic_query(domain=["api"])
+        assert len(local_results["results"]) == 0
+
+    def test_propose_falls_back_to_local_when_team_unreachable(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -316,7 +346,10 @@ class TestCraicProposeWithTeam:
 
         result = _propose_unit(domain=["api"])
         assert result["id"].startswith("ku_")
-        assert "team_id" not in result
+        assert result["tier"] == "local"
+        assert "stored locally" in result["message"]
+        local_results = craic_query(domain=["api"])
+        assert len(local_results["results"]) == 1
 
 
 class TestCraicConfirm:

@@ -127,6 +127,20 @@ class TestTeamClientPropose:
         monkeypatch.setattr(client._client, "post", _raise_connect_error)
         assert client.propose(_sample_unit()) is None
 
+    def test_propose_raises_on_http_rejection(
+        self,
+        client: TeamClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from craic_mcp.team_client import TeamRejectedError
+
+        response = _mock_response(422, {"detail": "Invalid domain"})
+        monkeypatch.setattr(client._client, "post", lambda *_a, **_kw: response)
+
+        with pytest.raises(TeamRejectedError) as exc_info:
+            client.propose(_sample_unit())
+        assert exc_info.value.status_code == 422
+
     def test_propose_parses_response(
         self,
         client: TeamClient,
