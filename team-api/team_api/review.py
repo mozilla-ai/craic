@@ -215,6 +215,45 @@ def review_stats(
     )
 
 
+@router.get("/units")
+def list_units(
+    domain: str | None = None,
+    confidence_min: float | None = None,
+    confidence_max: float | None = None,
+    status: str | None = None,
+    _user: str = Depends(get_current_user),
+    store: TeamStore = Depends(get_store),
+) -> list[ReviewItem]:
+    """Return KUs filtered by domain, confidence range, or status.
+
+    Args:
+        domain: Optional domain tag to filter by.
+        confidence_min: Optional minimum confidence (inclusive).
+        confidence_max: Optional maximum confidence (exclusive, except 1.0).
+        status: Optional review status (e.g. "approved", "rejected").
+        _user: The authenticated user (unused, enforces auth).
+        store: The team store dependency.
+
+    Returns:
+        List of knowledge units with review metadata.
+    """
+    items = store.list_units(
+        domain=domain,
+        confidence_min=confidence_min,
+        confidence_max=confidence_max,
+        status=status,
+    )
+    return [
+        ReviewItem(
+            knowledge_unit=item["knowledge_unit"],
+            status=item["status"],
+            reviewed_by=item["reviewed_by"],
+            reviewed_at=item["reviewed_at"],
+        )
+        for item in items
+    ]
+
+
 @router.get("/{unit_id}")
 def get_unit(
     unit_id: str,

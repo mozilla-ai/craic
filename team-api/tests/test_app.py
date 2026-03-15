@@ -189,8 +189,13 @@ class TestStats:
         assert body["domains"] == {}
 
     def test_stats_after_inserts(self, client: TestClient) -> None:
-        client.post("/propose", json=_propose_payload(domain=["api", "auth"]))
-        client.post("/propose", json=_propose_payload(domain=["api", "payments"]))
+        from team_api.app import _get_store
+
+        r1 = client.post("/propose", json=_propose_payload(domain=["api", "auth"]))
+        r2 = client.post("/propose", json=_propose_payload(domain=["api", "payments"]))
+        store = _get_store()
+        store.set_review_status(r1.json()["id"], "approved", "tester")
+        store.set_review_status(r2.json()["id"], "approved", "tester")
         resp = client.get("/stats")
         assert resp.status_code == 200
         body = resp.json()

@@ -122,6 +122,85 @@ class TestReject:
         assert len(resp.json()) == 0
 
 
+class TestListUnits:
+    def test_filter_by_domain(self, client: TestClient) -> None:
+        token = _login(client)
+        _propose(client, domain=["python"])
+        _propose(client, domain=["rust"])
+        resp = client.get(
+            "/review/units", params={"domain": "python"}, headers=_auth_header(token)
+        )
+        assert resp.status_code == 200
+        items = resp.json()
+        assert len(items) == 1
+        assert "python" in items[0]["knowledge_unit"]["domain"]
+
+    def test_filter_by_confidence_range(self, client: TestClient) -> None:
+        """Default confidence from propose is 0.5; filter to include/exclude it."""
+        token = _login(client)
+        _propose(client)
+        _propose(client)
+        # Both KUs have default confidence 0.5 — range [0.3, 0.6) includes them.
+        resp = client.get(
+            "/review/units",
+            params={"confidence_min": 0.3, "confidence_max": 0.6},
+            headers=_auth_header(token),
+        )
+        assert resp.status_code == 200
+        assert len(resp.json()) == 2
+        # Range [0.8, 1.01) excludes them.
+        resp = client.get(
+            "/review/units",
+            params={"confidence_min": 0.8, "confidence_max": 1.01},
+            headers=_auth_header(token),
+        )
+        assert resp.status_code == 200
+        assert len(resp.json()) == 0
+
+    def test_includes_all_statuses(self, client: TestClient) -> None:
+        token = _login(client)
+        u1 = _propose(client, domain=["mixed"])
+        u2 = _propose(client, domain=["mixed"])
+        _propose(client, domain=["mixed"])
+        client.post(f"/review/{u1['id']}/approve", headers=_auth_header(token))
+        client.post(f"/review/{u2['id']}/reject", headers=_auth_header(token))
+        resp = client.get(
+            "/review/units", params={"domain": "mixed"}, headers=_auth_header(token)
+        )
+        assert resp.status_code == 200
+        items = resp.json()
+        assert len(items) == 3
+        statuses = {item["status"] for item in items}
+        assert statuses == {"approved", "rejected", "pending"}
+
+    def test_filter_by_status(self, client: TestClient) -> None:
+        token = _login(client)
+        u1 = _propose(client, domain=["status-test"])
+        _propose(client, domain=["status-test"])
+        client.post(f"/review/{u1['id']}/approve", headers=_auth_header(token))
+        resp = client.get(
+            "/review/units",
+            params={"domain": "status-test", "status": "approved"},
+            headers=_auth_header(token),
+        )
+        assert resp.status_code == 200
+        items = resp.json()
+        assert len(items) == 1
+        assert items[0]["status"] == "approved"
+
+    def test_requires_auth(self, client: TestClient) -> None:
+        resp = client.get("/review/units")
+        assert resp.status_code == 401
+
+    def test_no_filters_returns_all(self, client: TestClient) -> None:
+        token = _login(client)
+        _propose(client)
+        _propose(client)
+        resp = client.get("/review/units", headers=_auth_header(token))
+        assert resp.status_code == 200
+        assert len(resp.json()) == 2
+
+
 class TestGetUnit:
     def test_get_pending_unit(self, client: TestClient) -> None:
         token = _login(client)
@@ -179,6 +258,17 @@ class TestReviewStats:
         assert body["counts"]["approved"] == 1
         assert body["counts"]["rejected"] == 1
         assert body["counts"]["pending"] == 1
+
+    def test_domains_count_approved_only(self, client: TestClient) -> None:
+        token = _login(client)
+        u1 = _propose(client, domain=["only-approved"])
+        u2 = _propose(client, domain=["only-approved"])
+        client.post(f"/review/{u1['id']}/approve", headers=_auth_header(token))
+        client.post(f"/review/{u2['id']}/reject", headers=_auth_header(token))
+        resp = client.get("/review/stats", headers=_auth_header(token))
+        assert resp.status_code == 200
+        domains = resp.json()["domains"]
+        assert domains.get("only-approved") == 1
 
 
 class TestReviewStatsDetail:

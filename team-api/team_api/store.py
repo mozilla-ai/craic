@@ -331,11 +331,15 @@ class TeamStore:
         return row[0]
 
     def domain_counts(self) -> dict[str, int]:
-        """Return the count of knowledge units per domain tag."""
+        """Return the count of approved knowledge units per domain tag."""
         self._check_open()
         with self._lock:
             rows = self._conn.execute(
-                "SELECT domain, COUNT(*) FROM knowledge_unit_domains GROUP BY domain ORDER BY COUNT(*) DESC"
+                "SELECT d.domain, COUNT(*) "
+                "FROM knowledge_unit_domains d "
+                "JOIN knowledge_units ku ON ku.id = d.unit_id "
+                "WHERE ku.status = 'approved' "
+                "GROUP BY d.domain ORDER BY COUNT(*) DESC"
             ).fetchall()
         return {row[0]: row[1] for row in rows}
 
@@ -387,6 +391,75 @@ class TeamStore:
                 "SELECT status, COUNT(*) FROM knowledge_units GROUP BY status"
             ).fetchall()
         return {row[0]: row[1] for row in rows}
+
+    def list_units(
+        self,
+        *,
+        domain: str | None = None,
+        confidence_min: float | None = None,
+        confidence_max: float | None = None,
+        status: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return KUs with review metadata, filtered by domain, confidence, or status.
+
+        Confidence filtering is applied in-memory after deserialization
+        since confidence lives in the JSON blob.
+
+        Args:
+            domain: Optional domain tag to filter by.
+            confidence_min: Optional minimum confidence (inclusive).
+            confidence_max: Optional maximum confidence (exclusive, except 1.0).
+            status: Optional review status to filter by (e.g. "approved", "rejected").
+
+        Returns:
+            List of dicts with knowledge_unit, status, reviewed_by,
+            and reviewed_at keys.
+        """
+        self._check_open()
+        params: list[str] = []
+        conditions: list[str] = []
+
+        if status:
+            conditions.append("ku.status = ?")
+            params.append(status)
+
+        if domain:
+            normalised = normalise_domains([domain])
+            if not normalised:
+                return []
+            conditions.append(
+                "ku.id IN ("
+                "  SELECT DISTINCT unit_id FROM knowledge_unit_domains WHERE domain = ?"
+                ")"
+            )
+            params.append(normalised[0])
+
+        where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        sql = (
+            "SELECT ku.data, ku.status, ku.reviewed_by, ku.reviewed_at "
+            f"FROM knowledge_units ku {where} "
+            "ORDER BY ku.created_at DESC"
+        )
+        with self._lock:
+            rows = self._conn.execute(sql, params).fetchall()
+
+        results = []
+        for row in rows:
+            unit = KnowledgeUnit.model_validate_json(row[0])
+            c = unit.evidence.confidence
+            if confidence_min is not None and c < confidence_min:
+                continue
+            if confidence_max is not None and c >= confidence_max:
+                continue
+            results.append(
+                {
+                    "knowledge_unit": unit,
+                    "status": row[1] or "pending",
+                    "reviewed_by": row[2],
+                    "reviewed_at": row[3],
+                }
+            )
+        return results
 
     def create_user(self, username: str, password_hash: str) -> None:
         """Insert a new user.

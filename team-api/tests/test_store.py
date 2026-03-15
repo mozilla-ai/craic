@@ -129,8 +129,12 @@ class TestStats:
         assert store.count() == 2
 
     def test_domain_counts(self, store: TeamStore) -> None:
-        store.insert(_make_unit(domain=["api", "payments"]))
-        store.insert(_make_unit(domain=["api", "auth"]))
+        u1 = _make_unit(domain=["api", "payments"])
+        u2 = _make_unit(domain=["api", "auth"])
+        store.insert(u1)
+        store.insert(u2)
+        store.set_review_status(u1.id, "approved", "tester")
+        store.set_review_status(u2.id, "approved", "tester")
         counts = store.domain_counts()
         assert counts["api"] == 2
         assert counts["payments"] == 1

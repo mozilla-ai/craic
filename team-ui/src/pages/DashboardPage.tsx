@@ -4,6 +4,7 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "rec
 import { api } from "../api";
 import { StatusBadge } from "../components/StatusBadge";
 import { KnowledgeUnitModal } from "../components/KnowledgeUnitModal";
+import { FilteredListModal, type ListFilter } from "../components/FilteredListModal";
 import { timeAgo } from "../utils";
 import type { ReviewStatsResponse, DailyCount } from "../types";
 
@@ -36,7 +37,9 @@ export function DashboardPage() {
   const [stats, setStats] = useState<ReviewStatsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
+  const [listFilter, setListFilter] = useState<ListFilter | null>(null);
   const closeModal = useCallback(() => setSelectedUnitId(null), []);
+  const closeListModal = useCallback(() => setListFilter(null), []);
 
   useEffect(() => {
     function fetchStats() {
@@ -96,10 +99,15 @@ export function DashboardPage() {
               <p className="text-3xl font-bold text-green-600">{stats.counts.approved}</p>
               <p className="text-xs text-gray-500 uppercase mt-1">Approved</p>
             </div>
-            <div className="bg-white rounded-lg border border-gray-200 p-4 text-center">
+            <button
+              className="bg-white rounded-lg border border-gray-200 p-4 text-center hover:border-red-300 transition-colors w-full"
+              onClick={() =>
+                setListFilter({ title: "Rejected", status: "rejected" })
+              }
+            >
               <p className="text-3xl font-bold text-red-600">{stats.counts.rejected}</p>
               <p className="text-xs text-gray-500 uppercase mt-1">Rejected</p>
-            </div>
+            </button>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -111,7 +119,13 @@ export function DashboardPage() {
                   .map(([domain, count]) => {
                     const maxCount = Math.max(...Object.values(stats.domains));
                     return (
-                      <div key={domain} className="flex items-center gap-3">
+                      <button
+                        key={domain}
+                        className="flex items-center gap-3 w-full text-left rounded hover:bg-indigo-50 transition-colors -mx-1 px-1"
+                        onClick={() =>
+                          setListFilter({ title: `Domain: ${domain}`, domain, status: "approved" })
+                        }
+                      >
                         <span className="text-sm text-gray-700 w-24 truncate">{domain}</span>
                         <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
                           <div
@@ -120,7 +134,7 @@ export function DashboardPage() {
                           />
                         </div>
                         <span className="text-xs text-gray-400 w-6 text-right">{count}</span>
-                      </div>
+                      </button>
                     );
                   })}
               </div>
@@ -132,21 +146,37 @@ export function DashboardPage() {
                 const maxCount = Math.max(...Object.values(stats.confidence_distribution), 1);
                 return (
                   <div className="flex gap-2">
-                    {Object.entries(stats.confidence_distribution).map(([bucket, count]) => (
-                      <div key={bucket} className="flex-1 flex flex-col items-center gap-1">
-                        <span className="text-xs text-gray-500 font-medium">{count}</span>
-                        <div className="w-full h-24 flex items-end">
-                          <div
-                            className={`w-full rounded-t ${CONFIDENCE_COLORS[bucket] ?? "bg-gray-200"}`}
-                            style={{
-                              height: maxCount > 0 ? `${(count / maxCount) * 100}%` : "0",
-                              minHeight: count > 0 ? "8px" : "0",
-                            }}
-                          />
-                        </div>
-                        <span className="text-[10px] text-gray-500 truncate w-full text-center">{bucket}</span>
-                      </div>
-                    ))}
+                    {Object.entries(stats.confidence_distribution).map(([bucket, count]) => {
+                      const [minStr, maxStr] = bucket.split("-");
+                      const max = parseFloat(maxStr);
+                      return (
+                        <button
+                          key={bucket}
+                          className="flex-1 flex flex-col items-center gap-1 rounded hover:bg-gray-50 transition-colors cursor-pointer"
+                          disabled={count === 0}
+                          onClick={() =>
+                            setListFilter({
+                              title: `Confidence: ${bucket}`,
+                              confidence_min: parseFloat(minStr),
+                              confidence_max: max >= 1.0 ? undefined : max,
+                              status: "approved",
+                            })
+                          }
+                        >
+                          <span className="text-xs text-gray-500 font-medium">{count}</span>
+                          <div className="w-full h-24 flex items-end">
+                            <div
+                              className={`w-full rounded-t ${CONFIDENCE_COLORS[bucket] ?? "bg-gray-200"}`}
+                              style={{
+                                height: maxCount > 0 ? `${(count / maxCount) * 100}%` : "0",
+                                minHeight: count > 0 ? "8px" : "0",
+                              }}
+                            />
+                          </div>
+                          <span className="text-[10px] text-gray-500 truncate w-full text-center">{bucket}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 );
               })()}
@@ -235,6 +265,18 @@ export function DashboardPage() {
             </div>
           </div>
         </>
+      )}
+
+      {listFilter && (
+        <FilteredListModal
+          key={listFilter.title}
+          filter={listFilter}
+          onClose={closeListModal}
+          onSelectUnit={(id) => {
+            setListFilter(null);
+            setSelectedUnitId(id);
+          }}
+        />
       )}
 
       {selectedUnitId && (

@@ -77,6 +77,22 @@ export const api = {
   reviewStats: () => request<ReviewStatsResponse>("/review/stats"),
 
   getUnit: (unitId: string) => request<ReviewItem>(`/review/${unitId}`),
+
+  listUnits: (params: {
+    domain?: string;
+    confidence_min?: number;
+    confidence_max?: number;
+    status?: string;
+  }) => {
+    const qs = new URLSearchParams();
+    if (params.domain) qs.set("domain", params.domain);
+    if (params.confidence_min != null)
+      qs.set("confidence_min", String(params.confidence_min));
+    if (params.confidence_max != null)
+      qs.set("confidence_max", String(params.confidence_max));
+    if (params.status) qs.set("status", params.status);
+    return request<ReviewItem[]>(`/review/units?${qs}`);
+  },
 };
 
 export { ApiError };
