@@ -51,7 +51,7 @@ export function useCardDrag(
 ): UseCardDragResult {
   const [offset, setOffset] = useState<DragOffset>({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
-  const [flyingOff, setFlyingOff] = useState(false);
+  const flyingOffRef = useRef(false);
   // Drag progress is stored as state so it is only written from event handlers,
   // not computed by reading cardRef during render.
   const [dragProgress, setDragProgress] = useState(0);
@@ -82,12 +82,12 @@ export function useCardDrag(
   );
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
-    if (flyingOff) return;
+    if (flyingOffRef.current) return;
     pointerId.current = e.pointerId;
     startPos.current = { x: e.clientX, y: e.clientY };
     setIsDragging(true);
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
-  }, [flyingOff]);
+  }, []);
 
   const onPointerMove = useCallback(
     (e: React.PointerEvent) => {
@@ -104,7 +104,8 @@ export function useCardDrag(
   const onPointerUp = useCallback(
     (e: React.PointerEvent) => {
       if (e.pointerId !== pointerId.current) return;
-      const currentOffset = { x: e.clientX - (startPos.current?.x ?? 0), y: e.clientY - (startPos.current?.y ?? 0) };
+      if (!startPos.current) return;
+      const currentOffset = { x: e.clientX - startPos.current.x, y: e.clientY - startPos.current.y };
       const action = inferAction(currentOffset);
       const progress = computeProgress(currentOffset);
 
@@ -112,11 +113,10 @@ export function useCardDrag(
       pointerId.current = null;
       setIsDragging(false);
       setDragProgress(0);
+      setOffset({ x: 0, y: 0 });
 
       if (action && progress >= 1) {
         onCommit(action);
-      } else {
-        setOffset({ x: 0, y: 0 });
       }
     },
     [computeProgress, onCommit],
@@ -136,16 +136,16 @@ export function useCardDrag(
 
   const flyOff = useCallback(
     async (action: Exclude<Selection, null>) => {
-      setFlyingOff(true);
-      const flyDistance = action === "skip" ? -window.innerHeight : (action === "approve" ? window.innerWidth : -window.innerWidth);
+      flyingOffRef.current = true;
       if (action === "skip") {
-        setOffset({ x: 0, y: flyDistance });
+        setOffset({ x: 0, y: -window.innerHeight });
       } else {
-        setOffset({ x: flyDistance, y: 0 });
+        const distance = action === "approve" ? window.innerWidth : -window.innerWidth;
+        setOffset({ x: distance, y: 0 });
       }
       await new Promise((resolve) => setTimeout(resolve, FLY_OFF_MS));
       setOffset({ x: 0, y: 0 });
-      setFlyingOff(false);
+      flyingOffRef.current = false;
     },
     [],
   );
