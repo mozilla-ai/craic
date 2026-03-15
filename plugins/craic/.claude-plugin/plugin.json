@@ -1,6 +1,6 @@
 {
   "name": "craic",
-  "version": "0.1.5",
+  "version": "0.2.0",
   "description": "Collective Reciprocal Agent Intelligence Commons — shared agent learning",
   "skills": "./skills/",
   "commands": "./commands/",

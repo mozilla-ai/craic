@@ -11,7 +11,7 @@
       "name": "craic",
       "source": "./plugins/craic",
       "description": "Collective Reciprocal Agent Intelligence Commons — shared agent learning",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "category": "knowledge",
       "tags": ["knowledge-sharing", "agent-learning", "agent-commons","mcp", "pitfall-avoidance", "team-knowledge", "api-quirks"]
     }
