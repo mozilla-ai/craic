@@ -1,1 +1,2 @@
 @import "tailwindcss";
+@custom-variant pointer-fine (@media (pointer: fine));
