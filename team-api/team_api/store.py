@@ -448,10 +448,11 @@ class TeamStore:
         return buckets
 
     def recent_activity(self, limit: int = 20) -> list[dict[str, Any]]:
-        """Return recent activity (proposals and reviews), sorted by event time.
+        """Return recent activity as one event per knowledge unit.
 
-        Fetches more rows than needed, sorts in-memory by event timestamp,
-        and returns the most recent `limit` entries.
+        Each KU appears once: reviewed KUs show as approved/rejected,
+        pending KUs show as proposed.  Ordered by the most recent
+        timestamp (reviewed_at for reviewed KUs, created_at otherwise).
 
         Args:
             limit: Maximum number of activity entries to return.
@@ -464,7 +465,7 @@ class TeamStore:
             rows = self._conn.execute(
                 "SELECT id, data, status, reviewed_by, reviewed_at "
                 "FROM knowledge_units "
-                "ORDER BY rowid DESC LIMIT ?",
+                "ORDER BY COALESCE(reviewed_at, created_at) DESC LIMIT ?",
                 (limit * 2,),
             ).fetchall()
         activity = []

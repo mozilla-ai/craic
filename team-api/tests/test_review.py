@@ -161,8 +161,12 @@ class TestReviewStatsDetail:
         """A reviewed KU should appear once (as approved/rejected), not twice."""
         token = _login(client)
         unit = _propose(client)
-        client.post(f"/review/{unit['id']}/approve", headers=_auth_header(token))
+        approve_resp = client.post(
+            f"/review/{unit['id']}/approve", headers=_auth_header(token)
+        )
+        assert approve_resp.status_code == 200
         resp = client.get("/review/stats", headers=_auth_header(token))
+        assert resp.status_code == 200
         events = resp.json()["recent_activity"]
         unit_events = [e for e in events if e["unit_id"] == unit["id"]]
         assert len(unit_events) == 1
@@ -173,6 +177,7 @@ class TestReviewStatsDetail:
         token = _login(client)
         unit = _propose(client)
         resp = client.get("/review/stats", headers=_auth_header(token))
+        assert resp.status_code == 200
         events = resp.json()["recent_activity"]
         unit_events = [e for e in events if e["unit_id"] == unit["id"]]
         assert len(unit_events) == 1
