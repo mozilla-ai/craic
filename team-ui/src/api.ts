@@ -1,4 +1,5 @@
 import type {
+  ReviewItem,
   ReviewQueueResponse,
   ReviewDecisionResponse,
   ReviewStatsResponse,
@@ -74,6 +75,8 @@ export const api = {
     }),
 
   reviewStats: () => request<ReviewStatsResponse>("/review/stats"),
+
+  getUnit: (unitId: string) => request<ReviewItem>(`/review/${unitId}`),
 };
 
 export { ApiError };

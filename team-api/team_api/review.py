@@ -213,3 +213,35 @@ def review_stats(
             daily=[DailyCount(**d) for d in store.daily_counts()],
         ),
     )
+
+
+@router.get("/{unit_id}")
+def get_unit(
+    unit_id: str,
+    _user: str = Depends(get_current_user),
+    store: TeamStore = Depends(get_store),
+) -> ReviewItem:
+    """Return a single knowledge unit with its review metadata.
+
+    Args:
+        unit_id: The knowledge unit identifier.
+        _user: The authenticated user (unused, enforces auth).
+        store: The team store dependency.
+
+    Returns:
+        The knowledge unit with review status, reviewer, and timestamp.
+
+    Raises:
+        HTTPException: With status 404 if the unit does not exist.
+    """
+    ku = store.get_any(unit_id)
+    if ku is None:
+        raise HTTPException(status_code=404, detail="Knowledge unit not found")
+    review = store.get_review_status(unit_id)
+    assert review is not None  # Unit exists; get_any just returned it.
+    return ReviewItem(
+        knowledge_unit=ku,
+        status=review["status"] or "pending",
+        reviewed_by=review["reviewed_by"],
+        reviewed_at=review["reviewed_at"],
+    )

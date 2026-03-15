@@ -122,6 +122,49 @@ class TestReject:
         assert len(resp.json()) == 0
 
 
+class TestGetUnit:
+    def test_get_pending_unit(self, client: TestClient) -> None:
+        token = _login(client)
+        unit = _propose(client)
+        resp = client.get(f"/review/{unit['id']}", headers=_auth_header(token))
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["knowledge_unit"]["id"] == unit["id"]
+        assert body["knowledge_unit"]["insight"]["summary"] == "Test insight"
+        assert body["status"] == "pending"
+        assert body["reviewed_by"] is None
+
+    def test_get_approved_unit(self, client: TestClient) -> None:
+        token = _login(client)
+        unit = _propose(client)
+        client.post(f"/review/{unit['id']}/approve", headers=_auth_header(token))
+        resp = client.get(f"/review/{unit['id']}", headers=_auth_header(token))
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == "approved"
+        assert body["reviewed_by"] == "reviewer"
+        assert body["reviewed_at"] is not None
+
+    def test_get_rejected_unit(self, client: TestClient) -> None:
+        token = _login(client)
+        unit = _propose(client)
+        client.post(f"/review/{unit['id']}/reject", headers=_auth_header(token))
+        resp = client.get(f"/review/{unit['id']}", headers=_auth_header(token))
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == "rejected"
+
+    def test_get_nonexistent_returns_404(self, client: TestClient) -> None:
+        token = _login(client)
+        resp = client.get("/review/ku_nonexistent", headers=_auth_header(token))
+        assert resp.status_code == 404
+
+    def test_get_requires_auth(self, client: TestClient) -> None:
+        unit = _propose(client)
+        resp = client.get(f"/review/{unit['id']}")
+        assert resp.status_code == 401
+
+
 class TestReviewStats:
     def test_stats_counts(self, client: TestClient) -> None:
         token = _login(client)

@@ -1,8 +1,9 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Link, useOutletContext } from "react-router";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { api } from "../api";
 import { StatusBadge } from "../components/StatusBadge";
+import { KnowledgeUnitModal } from "../components/KnowledgeUnitModal";
 import { timeAgo } from "../utils";
 import type { ReviewStatsResponse, DailyCount } from "../types";
 
@@ -34,6 +35,8 @@ export function DashboardPage() {
   }>();
   const [stats, setStats] = useState<ReviewStatsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
+  const closeModal = useCallback(() => setSelectedUnitId(null), []);
 
   useEffect(() => {
     function fetchStats() {
@@ -199,7 +202,11 @@ export function DashboardPage() {
                   </thead>
                   <tbody>
                     {stats.recent_activity.map((event, i) => (
-                      <tr key={i} className="border-b border-gray-50 last:border-0">
+                      <tr
+                        key={i}
+                        className="border-b border-gray-50 last:border-0 cursor-pointer hover:bg-gray-50 transition-colors"
+                        onClick={() => setSelectedUnitId(event.unit_id)}
+                      >
                         <td className="py-2 pr-3 w-20">
                           <StatusBadge status={event.type} />
                         </td>
@@ -220,6 +227,10 @@ export function DashboardPage() {
             </div>
           </div>
         </>
+      )}
+
+      {selectedUnitId && (
+        <KnowledgeUnitModal unitId={selectedUnitId} onClose={closeModal} />
       )}
     </div>
   );
