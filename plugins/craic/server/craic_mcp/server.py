@@ -7,10 +7,8 @@ Searches local store first, then the team API. Degrades gracefully
 to local-only mode when the team API is unreachable.
 """
 
-import atexit
 import logging
 import os
-import threading
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
@@ -47,88 +45,69 @@ mcp = FastMCP(
 _MAX_QUERY_LIMIT = 50
 _DEFAULT_TEAM_ADDR = ""
 
-_store_local = threading.local()
-_store_registry: list[LocalStore] = []
-_store_registry_lock = threading.Lock()
-
-_DISABLED_SENTINEL = object()
-_team_client: TeamClient | object | None = None
-_team_client_lock = threading.Lock()
+# All async tool handlers run on a single event loop thread, so a plain
+# module-level singleton replaces the previous threading.local() pattern.
+# Thread-local storage would only be necessary if handlers ran on multiple
+# OS threads, which the async model does not do.
+_store: LocalStore | None = None
 
 
 def _get_store() -> LocalStore:
-    """Return the thread-local store, creating it on first access.
+    """Return the module-level store, creating it on first access.
 
-    Each thread gets its own LocalStore instance to avoid sharing a single
-    SQLite connection across threads. All created stores are tracked in a
-    registry so they can be closed at shutdown regardless of which thread
-    created them.
+    All async tool handlers run on a single event loop thread, so
+    thread-local storage is unnecessary. A plain module-level singleton
+    replaces the previous threading.local() pattern.
     """
-    store: LocalStore | None = getattr(_store_local, "store", None)
-    if store is None:
+    global _store  # noqa: PLW0603
+    if _store is None:
         db_path_str = os.environ.get("CRAIC_LOCAL_DB_PATH")
         db_path = Path(db_path_str) if db_path_str else None
-        store = LocalStore(db_path=db_path)
-        _store_local.store = store
-        with _store_registry_lock:
-            _store_registry.append(store)
-    return store
+        _store = LocalStore(db_path=db_path)
+    return _store
 
 
 def _close_store() -> None:
-    """Close all registered stores and clear the registry.
+    """Close the store and reset to uninitialised state."""
+    global _store  # noqa: PLW0603
+    if _store is not None:
+        _store.close()
+        _store = None
 
-    Only safe to call during shutdown (via atexit) or in tests where no
-    other threads are accessing stores. Thread-local references on other
-    threads become stale after this call.
-    """
-    with _store_registry_lock:
-        for store in _store_registry:
-            store.close()
-        _store_registry.clear()
-    # Clear the thread-local reference for the current thread.
-    if getattr(_store_local, "store", None) is not None:
-        _store_local.store = None
+
+_DISABLED_SENTINEL = object()
+# All async tool handlers run on a single event loop thread, so no lock is
+# needed to guard singleton initialisation — concurrent access from multiple
+# threads cannot occur.
+_team_client: TeamClient | object | None = None
 
 
 def _get_team_client() -> TeamClient | None:
     """Return the team API client, creating it on first access.
 
-    Returns None if the team API URL is explicitly disabled (empty string).
-    The client is a module-level singleton since httpx.Client is thread-safe.
-    Initialisation is guarded by a lock to prevent duplicate creation. A
-    sentinel distinguishes "disabled" from "not yet initialised" so the
-    disabled path skips the lock on subsequent calls.
+    Returns None when CRAIC_TEAM_ADDR is empty or unset (local-only mode).
+    The client is a module-level singleton. No locking is needed because
+    all async tool handlers run on a single event loop thread.
     """
     global _team_client  # noqa: PLW0603
     if _team_client is _DISABLED_SENTINEL:
         return None
     if isinstance(_team_client, TeamClient):
         return _team_client
-    with _team_client_lock:
-        if _team_client is _DISABLED_SENTINEL:
-            return None
-        if isinstance(_team_client, TeamClient):
-            return _team_client
-        url = os.environ.get("CRAIC_TEAM_ADDR", _DEFAULT_TEAM_ADDR)
-        if not url:
-            _team_client = _DISABLED_SENTINEL
-            return None
-        _team_client = TeamClient(base_url=url)
+    url = os.environ.get("CRAIC_TEAM_ADDR", _DEFAULT_TEAM_ADDR)
+    if not url:
+        _team_client = _DISABLED_SENTINEL
+        return None
+    _team_client = TeamClient(base_url=url)
     return _team_client
 
 
-def _close_team_client() -> None:
+async def _close_team_client() -> None:
     """Close the team client if open and reset to uninitialised state."""
     global _team_client  # noqa: PLW0603
-    with _team_client_lock:
-        if isinstance(_team_client, TeamClient):
-            _team_client.close()
-        _team_client = None
-
-
-atexit.register(_close_store)
-atexit.register(_close_team_client)
+    if isinstance(_team_client, TeamClient):
+        await _team_client.close()
+    _team_client = None
 
 
 def _merge_results(
@@ -203,7 +182,7 @@ def _merge_results(
 
 
 @mcp.tool()
-def craic_query(
+async def craic_query(
     domain: list[str],
     language: str | None = None,
     framework: str | None = None,
@@ -243,7 +222,7 @@ def craic_query(
     team_results = None
     team_client = _get_team_client()
     if team_client is not None:
-        team_results = team_client.query(
+        team_results = await team_client.query(
             cleaned,
             language=language,
             framework=framework,
@@ -267,7 +246,7 @@ def craic_query(
 
 
 @mcp.tool()
-def craic_propose(
+async def craic_propose(
     summary: str,
     detail: str,
     action: str,
@@ -278,10 +257,11 @@ def craic_propose(
 ) -> dict:
     """Propose a new knowledge unit.
 
-    When a team API is configured, proposals are sent there for human
-    review and nothing is stored locally. If the team API is unreachable,
-    the unit is stored locally as a fallback. When no team API is
-    configured, the unit is always stored locally.
+    Propose flow scenarios:
+    - Team configured and reachable: proposal goes to team only, nothing stored locally.
+    - Team configured but unreachable: falls back to local storage.
+    - Team configured but rejects the proposal: returns error, nothing stored locally.
+    - No team configured: always stores locally.
 
     Args:
         summary: Concise description of the insight.
@@ -327,7 +307,7 @@ def craic_propose(
     team_client = _get_team_client()
     if team_client is not None:
         try:
-            team_unit = team_client.propose(unit)
+            team_unit = await team_client.propose(unit)
         except TeamRejectedError as exc:
             return {"error": f"Team API rejected proposal: {exc.detail}"}
         if team_unit is not None:
@@ -348,7 +328,7 @@ def craic_propose(
 
 
 @mcp.tool()
-def craic_confirm(unit_id: str) -> dict:
+async def craic_confirm(unit_id: str) -> dict:
     """Confirm a knowledge unit proved correct, boosting its confidence.
 
     Checks the local store first, then the team API. If found in both,
@@ -376,7 +356,7 @@ def craic_confirm(unit_id: str) -> dict:
         # Best-effort propagation to team.
         team_client = _get_team_client()
         if team_client is not None:
-            team_unit = team_client.confirm(unit_id)
+            team_unit = await team_client.confirm(unit_id)
             if team_unit is not None:
                 result["source"] = "both"
         return result
@@ -384,7 +364,7 @@ def craic_confirm(unit_id: str) -> dict:
     # Not in local store — try team API.
     team_client = _get_team_client()
     if team_client is not None:
-        team_unit = team_client.confirm(unit_id)
+        team_unit = await team_client.confirm(unit_id)
         if team_unit is not None:
             return {
                 "id": team_unit.id,
@@ -397,7 +377,7 @@ def craic_confirm(unit_id: str) -> dict:
 
 
 @mcp.tool()
-def craic_flag(unit_id: str, reason: str) -> dict:
+async def craic_flag(unit_id: str, reason: str) -> dict:
     """Flag a knowledge unit as problematic, reducing its confidence.
 
     Checks the local store first, then the team API. If found in both,
@@ -433,7 +413,7 @@ def craic_flag(unit_id: str, reason: str) -> dict:
         # Best-effort propagation to team.
         team_client = _get_team_client()
         if team_client is not None:
-            team_unit = team_client.flag(unit_id, flag_reason)
+            team_unit = await team_client.flag(unit_id, flag_reason)
             if team_unit is not None:
                 result["source"] = "both"
         return result
@@ -441,7 +421,7 @@ def craic_flag(unit_id: str, reason: str) -> dict:
     # Not in local store — try team API.
     team_client = _get_team_client()
     if team_client is not None:
-        team_unit = team_client.flag(unit_id, flag_reason)
+        team_unit = await team_client.flag(unit_id, flag_reason)
         if team_unit is not None:
             return {
                 "id": team_unit.id,

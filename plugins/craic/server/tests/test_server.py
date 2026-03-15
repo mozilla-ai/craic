@@ -2,7 +2,7 @@
 
 from collections.abc import Iterator
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from craic_mcp import server
@@ -30,13 +30,13 @@ def _store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.setenv("CRAIC_LOCAL_DB_PATH", str(tmp_path / "test.db"))
     monkeypatch.setenv("CRAIC_TEAM_ADDR", "")
     server._close_store()
-    server._close_team_client()
+    server._team_client = None
     yield
     server._close_store()
-    server._close_team_client()
+    server._team_client = None
 
 
-def _propose_unit(
+async def _propose_unit(
     *,
     domain: list[str] | None = None,
     summary: str = "Use connection pooling",
@@ -46,7 +46,7 @@ def _propose_unit(
     framework: str | None = None,
 ) -> dict:
     """Helper to propose a knowledge unit and return the result."""
-    return craic_propose(
+    return await craic_propose(
         summary=summary,
         detail=detail,
         action=action,
@@ -75,174 +75,174 @@ def _make_team_unit(
 
 
 class TestCraicQuery:
-    def test_query_returns_empty_for_no_data(self) -> None:
-        result = craic_query(domain=["databases"])
+    async def test_query_returns_empty_for_no_data(self) -> None:
+        result = await craic_query(domain=["databases"])
         assert result["results"] == []
         assert result["source"] == "local"
 
-    def test_query_returns_matching_units(self) -> None:
-        _propose_unit(domain=["databases"])
-        result = craic_query(domain=["databases"])
+    async def test_query_returns_matching_units(self) -> None:
+        await _propose_unit(domain=["databases"])
+        result = await craic_query(domain=["databases"])
         assert len(result["results"]) == 1
         assert "databases" in result["results"][0]["domain"]
 
-    def test_query_results_include_confirm_reminder(self) -> None:
-        proposed = _propose_unit(domain=["databases"])
-        result = craic_query(domain=["databases"])
+    async def test_query_results_include_confirm_reminder(self) -> None:
+        proposed = await _propose_unit(domain=["databases"])
+        result = await craic_query(domain=["databases"])
         returned = result["results"][0]
         assert "action_required" in returned
         assert proposed["id"] in returned["action_required"]
         assert "craic_confirm" in returned["action_required"]
 
-    def test_query_boosts_matching_language(self) -> None:
-        _propose_unit(domain=["web"], language="python")
-        _propose_unit(domain=["web"], language="go")
-        result = craic_query(domain=["web"], language="python")
+    async def test_query_boosts_matching_language(self) -> None:
+        await _propose_unit(domain=["web"], language="python")
+        await _propose_unit(domain=["web"], language="go")
+        result = await craic_query(domain=["web"], language="python")
         assert len(result["results"]) == 2
         assert "python" in result["results"][0]["context"]["languages"]
 
-    def test_query_boosts_matching_framework(self) -> None:
-        _propose_unit(domain=["web"], framework="fastapi")
-        _propose_unit(domain=["web"], framework="django")
-        result = craic_query(domain=["web"], framework="fastapi")
+    async def test_query_boosts_matching_framework(self) -> None:
+        await _propose_unit(domain=["web"], framework="fastapi")
+        await _propose_unit(domain=["web"], framework="django")
+        result = await craic_query(domain=["web"], framework="fastapi")
         assert len(result["results"]) == 2
         assert "fastapi" in result["results"][0]["context"]["frameworks"]
 
-    def test_query_respects_limit(self) -> None:
+    async def test_query_respects_limit(self) -> None:
         for _ in range(3):
-            _propose_unit(domain=["api"])
-        result = craic_query(domain=["api"], limit=2)
+            await _propose_unit(domain=["api"])
+        result = await craic_query(domain=["api"], limit=2)
         assert len(result["results"]) == 2
 
-    def test_query_no_match_returns_empty(self) -> None:
-        _propose_unit(domain=["databases"])
-        result = craic_query(domain=["networking"])
+    async def test_query_no_match_returns_empty(self) -> None:
+        await _propose_unit(domain=["databases"])
+        result = await craic_query(domain=["networking"])
         assert result["results"] == []
 
-    def test_query_empty_domain_returns_error(self) -> None:
-        result = craic_query(domain=[])
+    async def test_query_empty_domain_returns_error(self) -> None:
+        result = await craic_query(domain=[])
         assert "error" in result
 
-    def test_query_zero_limit_returns_error(self) -> None:
-        result = craic_query(domain=["api"], limit=0)
+    async def test_query_zero_limit_returns_error(self) -> None:
+        result = await craic_query(domain=["api"], limit=0)
         assert "error" in result
 
-    def test_query_negative_limit_returns_error(self) -> None:
-        result = craic_query(domain=["api"], limit=-1)
+    async def test_query_negative_limit_returns_error(self) -> None:
+        result = await craic_query(domain=["api"], limit=-1)
         assert "error" in result
 
-    def test_query_exceeding_max_limit_returns_error(self) -> None:
-        result = craic_query(domain=["api"], limit=_MAX_QUERY_LIMIT + 1)
+    async def test_query_exceeding_max_limit_returns_error(self) -> None:
+        result = await craic_query(domain=["api"], limit=_MAX_QUERY_LIMIT + 1)
         assert "error" in result
         assert str(_MAX_QUERY_LIMIT) in result["error"]
 
-    def test_query_whitespace_only_domains_returns_error(self) -> None:
-        result = craic_query(domain=["", "  "])
+    async def test_query_whitespace_only_domains_returns_error(self) -> None:
+        result = await craic_query(domain=["", "  "])
         assert "error" in result
 
-    def test_query_strips_whitespace_from_domains(self) -> None:
-        _propose_unit(domain=["databases"])
-        result = craic_query(domain=["  databases  "])
+    async def test_query_strips_whitespace_from_domains(self) -> None:
+        await _propose_unit(domain=["databases"])
+        result = await craic_query(domain=["  databases  "])
         assert len(result["results"]) == 1
 
 
 class TestCraicQueryWithTeam:
-    def test_query_merges_local_and_team_results(
+    async def test_query_merges_local_and_team_results(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        _propose_unit(domain=["api"])
+        await _propose_unit(domain=["api"])
         team_unit = _make_team_unit(domain=["api"])
         mock_client = MagicMock()
-        mock_client.query.return_value = [team_unit]
+        mock_client.query = AsyncMock(return_value=[team_unit])
         monkeypatch.setattr(server, "_get_team_client", lambda: mock_client)
 
-        result = craic_query(domain=["api"])
+        result = await craic_query(domain=["api"])
         assert len(result["results"]) == 2
         assert result["source"] == "both"
 
-    def test_query_deduplicates_by_id(
+    async def test_query_deduplicates_by_id(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        proposed = _propose_unit(domain=["api"])
+        proposed = await _propose_unit(domain=["api"])
         # Team returns a unit with the same ID as the local one.
         duplicate = _make_team_unit(
             unit_id=proposed["id"],
             domain=["api"],
         )
         mock_client = MagicMock()
-        mock_client.query.return_value = [duplicate]
+        mock_client.query = AsyncMock(return_value=[duplicate])
         monkeypatch.setattr(server, "_get_team_client", lambda: mock_client)
 
-        result = craic_query(domain=["api"])
+        result = await craic_query(domain=["api"])
         assert len(result["results"]) == 1
         # Local version takes precedence.
         assert result["results"][0]["tier"] == "local"
         # Source reflects that both stores were consulted.
         assert result["source"] == "both"
 
-    def test_query_team_only_results(
+    async def test_query_team_only_results(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         team_unit = _make_team_unit(domain=["api"])
         mock_client = MagicMock()
-        mock_client.query.return_value = [team_unit]
+        mock_client.query = AsyncMock(return_value=[team_unit])
         monkeypatch.setattr(server, "_get_team_client", lambda: mock_client)
 
-        result = craic_query(domain=["api"])
+        result = await craic_query(domain=["api"])
         assert len(result["results"]) == 1
         assert result["source"] == "team"
 
-    def test_query_degrades_when_team_unreachable(
+    async def test_query_degrades_when_team_unreachable(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        _propose_unit(domain=["api"])
+        await _propose_unit(domain=["api"])
         mock_client = MagicMock()
-        mock_client.query.return_value = None
+        mock_client.query = AsyncMock(return_value=None)
         monkeypatch.setattr(server, "_get_team_client", lambda: mock_client)
 
-        result = craic_query(domain=["api"])
+        result = await craic_query(domain=["api"])
         assert len(result["results"]) == 1
         assert result["source"] == "local"
 
-    def test_query_respects_limit_across_merged_results(
+    async def test_query_respects_limit_across_merged_results(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        _propose_unit(domain=["api"])
-        _propose_unit(domain=["api"])
+        await _propose_unit(domain=["api"])
+        await _propose_unit(domain=["api"])
         team_units = [
             _make_team_unit(unit_id="ku_team_1", domain=["api"]),
             _make_team_unit(unit_id="ku_team_2", domain=["api"]),
         ]
         mock_client = MagicMock()
-        mock_client.query.return_value = team_units
+        mock_client.query = AsyncMock(return_value=team_units)
         monkeypatch.setattr(server, "_get_team_client", lambda: mock_client)
 
-        result = craic_query(domain=["api"], limit=3)
+        result = await craic_query(domain=["api"], limit=3)
         assert len(result["results"]) == 3
 
 
 class TestCraicPropose:
-    def test_propose_returns_id_and_tier(self) -> None:
-        result = _propose_unit()
+    async def test_propose_returns_id_and_tier(self) -> None:
+        result = await _propose_unit()
         assert result["id"].startswith("ku_")
         assert result["tier"] == "local"
         assert "stored locally" in result["message"]
 
-    def test_propose_with_context(self) -> None:
-        result = _propose_unit(language="python", framework="fastapi")
-        stored = craic_query(domain=["databases"], language="python")
+    async def test_propose_with_context(self) -> None:
+        result = await _propose_unit(language="python", framework="fastapi")
+        stored = await craic_query(domain=["databases"], language="python")
         assert len(stored["results"]) == 1
         assert "python" in stored["results"][0]["context"]["languages"]
         assert "fastapi" in stored["results"][0]["context"]["frameworks"]
         assert result["tier"] == "local"
 
-    def test_propose_blank_summary_returns_error(self) -> None:
-        result = craic_propose(
+    async def test_propose_blank_summary_returns_error(self) -> None:
+        result = await craic_propose(
             summary="   ",
             detail="some detail",
             action="do something",
@@ -250,8 +250,8 @@ class TestCraicPropose:
         )
         assert "error" in result
 
-    def test_propose_blank_detail_returns_error(self) -> None:
-        result = craic_propose(
+    async def test_propose_blank_detail_returns_error(self) -> None:
+        result = await craic_propose(
             summary="summary",
             detail="",
             action="do something",
@@ -259,8 +259,8 @@ class TestCraicPropose:
         )
         assert "error" in result
 
-    def test_propose_whitespace_only_domains_returns_error(self) -> None:
-        result = craic_propose(
+    async def test_propose_whitespace_only_domains_returns_error(self) -> None:
+        result = await craic_propose(
             summary="summary",
             detail="detail",
             action="action",
@@ -268,131 +268,134 @@ class TestCraicPropose:
         )
         assert "error" in result
 
-    def test_propose_strips_whitespace_from_language(self) -> None:
-        _propose_unit(domain=["web"], language="  python  ")
-        result = craic_query(domain=["web"], language="python")
+    async def test_propose_strips_whitespace_from_language(self) -> None:
+        await _propose_unit(domain=["web"], language="  python  ")
+        result = await craic_query(domain=["web"], language="python")
         assert len(result["results"]) == 1
         assert "python" in result["results"][0]["context"]["languages"]
 
-    def test_propose_strips_whitespace_from_framework(self) -> None:
-        _propose_unit(domain=["web"], framework="  fastapi  ")
-        result = craic_query(domain=["web"], framework="fastapi")
+    async def test_propose_strips_whitespace_from_framework(self) -> None:
+        await _propose_unit(domain=["web"], framework="  fastapi  ")
+        result = await craic_query(domain=["web"], framework="fastapi")
         assert len(result["results"]) == 1
         assert "fastapi" in result["results"][0]["context"]["frameworks"]
 
-    def test_propose_treats_whitespace_only_language_as_none(self) -> None:
-        _propose_unit(domain=["web"], language="   ")
-        result = craic_query(domain=["web"])
+    async def test_propose_treats_whitespace_only_language_as_none(self) -> None:
+        await _propose_unit(domain=["web"], language="   ")
+        result = await craic_query(domain=["web"])
         assert result["results"][0]["context"]["languages"] == []
 
-    def test_propose_stores_retrievable_unit(self) -> None:
-        result = _propose_unit(domain=["testing"])
-        confirmed = craic_confirm(unit_id=result["id"])
+    async def test_propose_stores_retrievable_unit(self) -> None:
+        result = await _propose_unit(domain=["testing"])
+        confirmed = await craic_confirm(unit_id=result["id"])
         assert confirmed["id"] == result["id"]
 
 
 class TestCraicProposeWithTeam:
-    def test_propose_pushes_to_team(
+    async def test_propose_pushes_to_team(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         team_unit = _make_team_unit(unit_id="ku_team_pushed")
         mock_client = MagicMock()
-        mock_client.propose.return_value = team_unit
+        mock_client.propose = AsyncMock(return_value=team_unit)
         monkeypatch.setattr(server, "_get_team_client", lambda: mock_client)
 
-        result = _propose_unit(domain=["api"])
+        result = await _propose_unit(domain=["api"])
         assert result["id"] == "ku_team_pushed"
         assert result["tier"] == "team"
         assert "proposed to team" in result["message"]
         mock_client.propose.assert_called_once()
 
-    def test_propose_skips_local_store_when_team_succeeds(
+    async def test_propose_skips_local_store_when_team_succeeds(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         team_unit = _make_team_unit(unit_id="ku_team_only")
         mock_client = MagicMock()
-        mock_client.propose.return_value = team_unit
+        mock_client.propose = AsyncMock(return_value=team_unit)
+        mock_client.query = AsyncMock(return_value=[])
         monkeypatch.setattr(server, "_get_team_client", lambda: mock_client)
 
-        _propose_unit(domain=["api"])
-        local_results = craic_query(domain=["api"])
+        await _propose_unit(domain=["api"])
+        local_results = await craic_query(domain=["api"])
         assert len(local_results["results"]) == 0
 
-    def test_propose_returns_error_when_team_rejects(
+    async def test_propose_returns_error_when_team_rejects(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         from craic_mcp.team_client import TeamRejectedError
 
         mock_client = MagicMock()
-        mock_client.propose.side_effect = TeamRejectedError(422, "Invalid domain")
+        mock_client.propose = AsyncMock(side_effect=TeamRejectedError(422, "Invalid domain"))
+        mock_client.query = AsyncMock(return_value=[])
         monkeypatch.setattr(server, "_get_team_client", lambda: mock_client)
 
-        result = _propose_unit(domain=["api"])
+        result = await _propose_unit(domain=["api"])
         assert "error" in result
         assert "rejected" in result["error"].lower()
-        local_results = craic_query(domain=["api"])
+        local_results = await craic_query(domain=["api"])
         assert len(local_results["results"]) == 0
 
-    def test_propose_falls_back_to_local_when_team_unreachable(
+    async def test_propose_falls_back_to_local_when_team_unreachable(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         mock_client = MagicMock()
-        mock_client.propose.return_value = None
+        mock_client.propose = AsyncMock(return_value=None)
+        mock_client.query = AsyncMock(return_value=[])
         monkeypatch.setattr(server, "_get_team_client", lambda: mock_client)
 
-        result = _propose_unit(domain=["api"])
+        result = await _propose_unit(domain=["api"])
         assert result["id"].startswith("ku_")
         assert result["tier"] == "local"
         assert "stored locally" in result["message"]
-        local_results = craic_query(domain=["api"])
+        local_results = await craic_query(domain=["api"])
         assert len(local_results["results"]) == 1
 
 
 class TestCraicConfirm:
-    def test_confirm_boosts_confidence(self) -> None:
-        proposed = _propose_unit()
-        result = craic_confirm(unit_id=proposed["id"])
+    async def test_confirm_boosts_confidence(self) -> None:
+        proposed = await _propose_unit()
+        result = await craic_confirm(unit_id=proposed["id"])
         assert result["new_confidence"] == pytest.approx(0.6)
         assert result["confirmations"] == 2
 
-    def test_confirm_missing_unit_returns_error(self) -> None:
-        result = craic_confirm(unit_id="ku_nonexistent")
+    async def test_confirm_missing_unit_returns_error(self) -> None:
+        result = await craic_confirm(unit_id="ku_nonexistent")
         assert "error" in result
         assert "not found" in result["error"].lower()
 
 
 class TestCraicConfirmWithTeam:
-    def test_confirm_propagates_to_team(
+    async def test_confirm_propagates_to_team(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        proposed = _propose_unit()
+        proposed = await _propose_unit()
         team_unit = _make_team_unit(unit_id=proposed["id"])
         mock_client = MagicMock()
-        mock_client.confirm.return_value = team_unit
+        mock_client.confirm = AsyncMock(return_value=team_unit)
         monkeypatch.setattr(server, "_get_team_client", lambda: mock_client)
 
-        result = craic_confirm(unit_id=proposed["id"])
+        result = await craic_confirm(unit_id=proposed["id"])
         assert result["source"] == "both"
         mock_client.confirm.assert_called_once_with(proposed["id"])
 
-    def test_confirm_local_only_when_team_not_found(
+    async def test_confirm_local_only_when_team_not_found(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        proposed = _propose_unit()
+        proposed = await _propose_unit()
         mock_client = MagicMock()
-        mock_client.confirm.return_value = None
+        mock_client.confirm = AsyncMock(return_value=None)
         monkeypatch.setattr(server, "_get_team_client", lambda: mock_client)
 
-        result = craic_confirm(unit_id=proposed["id"])
+        result = await craic_confirm(unit_id=proposed["id"])
         assert result["source"] == "local"
 
-    def test_confirm_team_only_unit(
+    async def test_confirm_team_only_unit(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -403,68 +406,68 @@ class TestCraicConfirmWithTeam:
             },
         )
         mock_client = MagicMock()
-        mock_client.confirm.return_value = confirmed_unit
+        mock_client.confirm = AsyncMock(return_value=confirmed_unit)
         monkeypatch.setattr(server, "_get_team_client", lambda: mock_client)
 
-        result = craic_confirm(unit_id="ku_team_only")
+        result = await craic_confirm(unit_id="ku_team_only")
         assert result["source"] == "team"
         assert result["new_confidence"] == pytest.approx(0.9)
 
-    def test_confirm_not_found_anywhere(
+    async def test_confirm_not_found_anywhere(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         mock_client = MagicMock()
-        mock_client.confirm.return_value = None
+        mock_client.confirm = AsyncMock(return_value=None)
         monkeypatch.setattr(server, "_get_team_client", lambda: mock_client)
 
-        result = craic_confirm(unit_id="ku_nowhere")
+        result = await craic_confirm(unit_id="ku_nowhere")
         assert "error" in result
 
 
 class TestCraicFlag:
-    def test_flag_reduces_confidence(self) -> None:
-        proposed = _propose_unit()
-        result = craic_flag(unit_id=proposed["id"], reason="stale")
+    async def test_flag_reduces_confidence(self) -> None:
+        proposed = await _propose_unit()
+        result = await craic_flag(unit_id=proposed["id"], reason="stale")
         assert result["new_confidence"] == pytest.approx(0.35)
         assert "flagged as stale" in result["message"]
 
-    def test_flag_missing_unit_returns_error(self) -> None:
-        result = craic_flag(unit_id="ku_nonexistent", reason="stale")
+    async def test_flag_missing_unit_returns_error(self) -> None:
+        result = await craic_flag(unit_id="ku_nonexistent", reason="stale")
         assert "error" in result
 
-    def test_flag_normalises_reason_whitespace(self) -> None:
-        proposed = _propose_unit()
-        result = craic_flag(unit_id=proposed["id"], reason="  stale  ")
+    async def test_flag_normalises_reason_whitespace(self) -> None:
+        proposed = await _propose_unit()
+        result = await craic_flag(unit_id=proposed["id"], reason="  stale  ")
         assert result["new_confidence"] == pytest.approx(0.35)
 
-    def test_flag_normalises_reason_case(self) -> None:
-        proposed = _propose_unit()
-        result = craic_flag(unit_id=proposed["id"], reason="STALE")
+    async def test_flag_normalises_reason_case(self) -> None:
+        proposed = await _propose_unit()
+        result = await craic_flag(unit_id=proposed["id"], reason="STALE")
         assert result["new_confidence"] == pytest.approx(0.35)
 
-    def test_flag_invalid_reason_returns_error(self) -> None:
-        proposed = _propose_unit()
-        result = craic_flag(unit_id=proposed["id"], reason="invalid")
+    async def test_flag_invalid_reason_returns_error(self) -> None:
+        proposed = await _propose_unit()
+        result = await craic_flag(unit_id=proposed["id"], reason="invalid")
         assert "error" in result
         assert "Invalid reason" in result["error"]
 
 
 class TestCraicFlagWithTeam:
-    def test_flag_propagates_to_team(
+    async def test_flag_propagates_to_team(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        proposed = _propose_unit()
+        proposed = await _propose_unit()
         team_unit = _make_team_unit(unit_id=proposed["id"])
         mock_client = MagicMock()
-        mock_client.flag.return_value = team_unit
+        mock_client.flag = AsyncMock(return_value=team_unit)
         monkeypatch.setattr(server, "_get_team_client", lambda: mock_client)
 
-        result = craic_flag(unit_id=proposed["id"], reason="stale")
+        result = await craic_flag(unit_id=proposed["id"], reason="stale")
         assert result["source"] == "both"
 
-    def test_flag_team_only_unit(
+    async def test_flag_team_only_unit(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -475,22 +478,22 @@ class TestCraicFlagWithTeam:
             },
         )
         mock_client = MagicMock()
-        mock_client.flag.return_value = flagged_unit
+        mock_client.flag = AsyncMock(return_value=flagged_unit)
         monkeypatch.setattr(server, "_get_team_client", lambda: mock_client)
 
-        result = craic_flag(unit_id="ku_team_only", reason="stale")
+        result = await craic_flag(unit_id="ku_team_only", reason="stale")
         assert result["source"] == "team"
         assert result["new_confidence"] == pytest.approx(0.65)
 
-    def test_flag_not_found_anywhere(
+    async def test_flag_not_found_anywhere(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         mock_client = MagicMock()
-        mock_client.flag.return_value = None
+        mock_client.flag = AsyncMock(return_value=None)
         monkeypatch.setattr(server, "_get_team_client", lambda: mock_client)
 
-        result = craic_flag(unit_id="ku_nowhere", reason="stale")
+        result = await craic_flag(unit_id="ku_nowhere", reason="stale")
         assert "error" in result
 
 
@@ -510,16 +513,16 @@ class TestCraicReflect:
 
 
 class TestCraicStatus:
-    def test_status_empty_store(self) -> None:
+    async def test_status_empty_store(self) -> None:
         result = craic_status()
         assert result["total_count"] == 0
         assert result["domain_counts"] == {}
         assert result["recent"] == []
 
-    def test_status_returns_statistics(self) -> None:
-        _propose_unit(domain=["api", "payments"])
-        _propose_unit(domain=["api", "databases"])
-        _propose_unit(domain=["databases"])
+    async def test_status_returns_statistics(self) -> None:
+        await _propose_unit(domain=["api", "payments"])
+        await _propose_unit(domain=["api", "databases"])
+        await _propose_unit(domain=["databases"])
         result = craic_status()
         assert result["total_count"] == 3
         assert result["domain_counts"]["api"] == 2
@@ -528,17 +531,17 @@ class TestCraicStatus:
         assert len(result["recent"]) == 3
         assert "confidence_distribution" in result
 
-    def test_status_returns_confidence_distribution(self) -> None:
-        _propose_unit(domain=["api"])
+    async def test_status_returns_confidence_distribution(self) -> None:
+        await _propose_unit(domain=["api"])
         result = craic_status()
         # Default confidence is 0.5, falls in "0.5-0.7" bucket.
         assert result["confidence_distribution"]["0.5-0.7"] == 1
 
 
 class TestEndToEnd:
-    def test_propose_query_confirm_flag_lifecycle(self) -> None:
+    async def test_propose_query_confirm_flag_lifecycle(self) -> None:
         # Propose a unit.
-        proposed = craic_propose(
+        proposed = await craic_propose(
             summary="Stripe returns 200 for rate limits",
             detail="Response body contains error object despite 200 status.",
             action="Always parse response body for error field.",
@@ -548,25 +551,25 @@ class TestEndToEnd:
         unit_id = proposed["id"]
 
         # Query returns it.
-        results = craic_query(domain=["api", "payments"], language="python")
+        results = await craic_query(domain=["api", "payments"], language="python")
         assert len(results["results"]) == 1
         assert results["results"][0]["evidence"]["confidence"] == 0.5
 
         # Confirm boosts confidence.
-        confirmed = craic_confirm(unit_id=unit_id)
+        confirmed = await craic_confirm(unit_id=unit_id)
         assert confirmed["new_confidence"] == pytest.approx(0.6)
         assert confirmed["confirmations"] == 2
 
         # Verify boosted confidence in query results.
-        results = craic_query(domain=["api", "payments"])
+        results = await craic_query(domain=["api", "payments"])
         assert results["results"][0]["evidence"]["confidence"] == pytest.approx(0.6)
 
         # Flag reduces confidence.
-        flagged = craic_flag(unit_id=unit_id, reason="stale")
+        flagged = await craic_flag(unit_id=unit_id, reason="stale")
         assert flagged["new_confidence"] == pytest.approx(0.45)
 
         # Verify flag in query results.
-        results = craic_query(domain=["api", "payments"])
+        results = await craic_query(domain=["api", "payments"])
         result = results["results"][0]
         assert result["evidence"]["confidence"] == pytest.approx(0.45)
         assert len(result["flags"]) == 1
