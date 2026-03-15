@@ -21,7 +21,7 @@ export interface DragState {
   dragProgress: number;
 }
 
-interface PointerHandlers {
+export interface PointerHandlers {
   onPointerDown: (e: React.PointerEvent) => void;
   onPointerMove: (e: React.PointerEvent) => void;
   onPointerUp: (e: React.PointerEvent) => void;

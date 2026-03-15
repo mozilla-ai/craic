@@ -2,14 +2,14 @@ import { forwardRef } from "react";
 import type { KnowledgeUnit, Selection } from "../types";
 import { DomainTags } from "./DomainTags";
 import { timeAgo } from "../utils";
-import type { DragState } from "../hooks/useCardDrag";
+import type { DragState, PointerHandlers } from "../hooks/useCardDrag";
 import { BADGE_APPEAR_RATIO, MAX_ROTATION_DEG } from "../hooks/useCardDrag";
 
 interface Props {
   unit: KnowledgeUnit;
   selection: Selection;
   drag: DragState;
-  pointerHandlers: Record<string, (e: React.PointerEvent) => void>;
+  pointerHandlers: PointerHandlers;
 }
 
 const CARD_STYLES: Record<string, string> = {
