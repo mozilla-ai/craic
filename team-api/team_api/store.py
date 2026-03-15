@@ -399,6 +399,7 @@ class TeamStore:
         confidence_min: float | None = None,
         confidence_max: float | None = None,
         status: str | None = None,
+        limit: int = 100,
     ) -> list[dict[str, Any]]:
         """Return KUs with review metadata, filtered by domain, confidence, or status.
 
@@ -408,7 +409,7 @@ class TeamStore:
         Args:
             domain: Optional domain tag to filter by.
             confidence_min: Optional minimum confidence (inclusive).
-            confidence_max: Optional maximum confidence (exclusive, except 1.0).
+            confidence_max: Optional maximum confidence (exclusive when < 1.0, inclusive at 1.0).
             status: Optional review status to filter by (e.g. "approved", "rejected").
 
         Returns:
@@ -434,11 +435,13 @@ class TeamStore:
             )
             params.append(normalised[0])
 
+        has_confidence_filter = confidence_min is not None or confidence_max is not None
         where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        sql_limit = "" if has_confidence_filter else f"LIMIT {limit}"
         sql = (
             "SELECT ku.data, ku.status, ku.reviewed_by, ku.reviewed_at "
             f"FROM knowledge_units ku {where} "
-            "ORDER BY ku.created_at DESC"
+            f"ORDER BY ku.created_at DESC {sql_limit}"
         )
         with self._lock:
             rows = self._conn.execute(sql, params).fetchall()
@@ -449,7 +452,9 @@ class TeamStore:
             c = unit.evidence.confidence
             if confidence_min is not None and c < confidence_min:
                 continue
-            if confidence_max is not None and c >= confidence_max:
+            if confidence_max is not None and (
+                c > confidence_max or (c >= confidence_max and confidence_max < 1.0)
+            ):
                 continue
             results.append(
                 {
@@ -459,6 +464,8 @@ class TeamStore:
                     "reviewed_at": row[3],
                 }
             )
+            if len(results) >= limit:
+                break
         return results
 
     def create_user(self, username: str, password_hash: str) -> None:

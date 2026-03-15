@@ -221,6 +221,7 @@ def list_units(
     confidence_min: float | None = None,
     confidence_max: float | None = None,
     status: str | None = None,
+    limit: int = 100,
     _user: str = Depends(get_current_user),
     store: TeamStore = Depends(get_store),
 ) -> list[ReviewItem]:
@@ -229,8 +230,10 @@ def list_units(
     Args:
         domain: Optional domain tag to filter by.
         confidence_min: Optional minimum confidence (inclusive).
-        confidence_max: Optional maximum confidence (exclusive, except 1.0).
+        confidence_max: Optional maximum confidence (exclusive when < 1.0,
+            inclusive at 1.0).
         status: Optional review status (e.g. "approved", "rejected").
+        limit: Maximum number of results to return.
         _user: The authenticated user (unused, enforces auth).
         store: The team store dependency.
 
@@ -242,6 +245,7 @@ def list_units(
         confidence_min=confidence_min,
         confidence_max=confidence_max,
         status=status,
+        limit=limit,
     )
     return [
         ReviewItem(

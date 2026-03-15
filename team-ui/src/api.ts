@@ -91,7 +91,8 @@ export const api = {
     if (params.confidence_max != null)
       qs.set("confidence_max", String(params.confidence_max));
     if (params.status) qs.set("status", params.status);
-    return request<ReviewItem[]>(`/review/units?${qs}`);
+    const query = qs.toString();
+    return request<ReviewItem[]>(`/review/units${query ? `?${query}` : ""}`);
   },
 };
 
