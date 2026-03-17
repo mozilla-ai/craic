@@ -14,6 +14,7 @@ import threading
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
+from sentence_transformers import SentenceTransformer
 
 from .knowledge_unit import (
     Context,
@@ -44,6 +45,9 @@ mcp = FastMCP(
     ),
 )
 
+EMBEDDING_MODEL_NAME = "paraphrase-MiniLM-L3-v2"
+embedding_model = SentenceTransformer(EMBEDDING_MODEL_NAME, backend="onnx")
+
 _MAX_QUERY_LIMIT = 50
 _DEFAULT_TEAM_ADDR = ""
 
@@ -68,7 +72,7 @@ def _get_store() -> LocalStore:
     if store is None:
         db_path_str = os.environ.get("CRAIC_LOCAL_DB_PATH")
         db_path = Path(db_path_str) if db_path_str else None
-        store = LocalStore(db_path=db_path)
+        store = LocalStore(db_path=db_path, embedding_model=embedding_model)
         _store_local.store = store
         with _store_registry_lock:
             _store_registry.append(store)
