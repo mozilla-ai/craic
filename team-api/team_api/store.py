@@ -267,8 +267,10 @@ class TeamStore:
 
         Args:
             domains: Domain tags to search for.
-            language: Optional programming language filter.
-            framework: Optional framework filter.
+            language: Optional language ranking signal. Matching KUs
+                rank higher but non-matching KUs are still returned.
+            framework: Optional framework ranking signal. Matching KUs
+                rank higher but non-matching KUs are still returned.
             limit: Maximum number of results to return. Must be positive.
 
         Returns:
@@ -305,11 +307,6 @@ class TeamStore:
         # For larger stores, push coarse filters into SQL.
         units = [KnowledgeUnit.model_validate_json(row[0]) for row in rows]
 
-        if language:
-            units = [u for u in units if language in u.context.languages]
-        if framework:
-            units = [u for u in units if framework in u.context.frameworks]
-
         scored = []
         for unit in units:
             relevance = calculate_relevance(
@@ -320,7 +317,7 @@ class TeamStore:
             )
             scored.append((relevance * unit.evidence.confidence, unit))
 
-        scored.sort(key=lambda pair: pair[0], reverse=True)
+        scored.sort(key=lambda pair: (pair[0], pair[1].id), reverse=True)
         return [unit for _, unit in scored[:limit]]
 
     def count(self) -> int:
